@@ -14,4 +14,4 @@ __pycache__/
 mod/run/
 mod/.gradle/
 mod/build/
-.claude/
+references/
