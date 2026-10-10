@@ -1,4 +1,4 @@
-import { type AddressInfo } from "node:net";
+import { connect, type AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadDesign } from "../src/designs.js";
 import { startPreview } from "../src/preview.js";
@@ -52,6 +52,23 @@ describe("startPreview", () => {
     const scene = (await (await fetch(`${base}/scene.json`)).json()) as Scene;
     expect(scene.name).toBe("test-office");
     expect(scene.version).toBe(1);
+  });
+
+  it("survives requests that are not valid paths", async () => {
+    // `fetch` normalises `//`, so send the raw request line.
+    const { port } = server.address() as AddressInfo;
+    for (const target of ["//", "//evil.example/x", "http://[", "/%"]) {
+      const body = await new Promise<string>((resolve, reject) => {
+        const request = `GET ${target} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n`;
+        const socket = connect(port, "127.0.0.1", () => socket.write(request));
+        let data = "";
+        socket.on("data", (chunk) => (data += chunk));
+        socket.on("close", () => resolve(data));
+        socket.on("error", reject);
+      });
+      expect(body, target).toMatch(/^HTTP\/1\.1 (400|404)/);
+    }
+    expect((await fetch(`${base}/scene.json`)).status).toBe(200); // the server is still up
   });
 
   it("serves nothing outside its whitelist", async () => {

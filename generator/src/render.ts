@@ -1,6 +1,7 @@
 import { type Layout } from "./anchors.js";
 import { type Design, type Direction, type Part, YAW } from "./design.js";
 import { Volume } from "./schematic.js";
+import { boulders, type Ctx, type Ground, terrain, trees, village } from "./landscape.js";
 
 const AIR = "minecraft:air";
 const OPPOSITE: Record<Direction, Direction> = { south: "north", north: "south", east: "west", west: "east" };
@@ -54,6 +55,8 @@ export function renderDesign(design: Design, { origin }: Placement): { volume: V
     claims.set(key, current);
     v.set(x, y, z, state);
   };
+  /** Whether a part (not the ground) has placed a block at this cell. */
+  const claimed = (x: number, y: number, z: number) => x >= 0 && x < width && y >= 0 && y < height && z >= 0 && z < length && claims.has(x + width * (z + length * y));
   const fill = (a: Vec3, b: Vec3, state: string) => {
     for (let y = Math.min(a[1], b[1]); y <= Math.max(a[1], b[1]); y++)
       for (let z = Math.min(a[2], b[2]); z <= Math.max(a[2], b[2]); z++)
@@ -88,6 +91,10 @@ export function renderDesign(design: Design, { origin }: Placement): { volume: V
     spot("entrance", shell.doorX, 1, "south");
     spot("spawn", shell.doorX, 2, "south");
   }
+
+  /** Ground height of the top block, by terrain part id, as `(x, z) => layer`. */
+  const ground = new Map<string, Ground>();
+  const ctx: Ctx = { design, v, set, fill, claimed, ground };
 
   const render = (part: Part): void => {
     switch (part.type) {
@@ -192,6 +199,18 @@ export function renderDesign(design: Design, { origin }: Placement): { volume: V
           }
         break;
       }
+      case "terrain":
+        terrain(ctx, part);
+        break;
+      case "trees":
+        trees(ctx, part);
+        break;
+      case "boulders":
+        boulders(ctx, part);
+        break;
+      case "village":
+        village(ctx, part);
+        break;
       case "fireplace": {
         // `d` points from the room into the wall.
         const d = part.faces === "west" ? 1 : -1;

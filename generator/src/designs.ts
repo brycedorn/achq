@@ -19,6 +19,13 @@ export function listVersions(name: string, dir = DESIGNS_DIR): number[] {
     .sort((a, b) => a - b);
 }
 
+/** Path of `designs/<name>/v<version>.json`, or of the latest version when none is given. */
+export function designFilePath(name: string, version?: number, dir = DESIGNS_DIR): string {
+  const versions = listVersions(name, dir);
+  if (versions.length === 0) throw new Error(`no design '${name}' in ${dir}`);
+  return join(dir, name, `v${version ?? versions[versions.length - 1]!}.json`);
+}
+
 /** Load `designs/<name>/v<version>.json`, or the latest version when none is given. */
 export function loadDesign(name: string, version?: number, dir = DESIGNS_DIR): Design {
   const versions = listVersions(name, dir);

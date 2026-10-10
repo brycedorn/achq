@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadDesign } from "./designs.js";
+import { designFilePath, loadDesign } from "./designs.js";
 import { buildScene } from "./scene.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -22,18 +22,41 @@ const FILES: Record<string, string> = {
   "/three-addons/controls/OrbitControls.js": join(THREE_DIR, "examples", "jsm", "controls", "OrbitControls.js"),
 };
 
+/** The pathname of a request URL, or undefined when it is not a path (such as `//`, which parses as a host). */
+function requestPath(url: string | undefined): string | undefined {
+  if (!url?.startsWith("/") || url.startsWith("//")) return undefined;
+  try {
+    return new URL(url, "http://localhost").pathname;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Serve the viewer for one design. `/scene.json` is rebuilt from the design file on every request, so
  * editing the JSON and reloading (or letting the page poll) shows the change without a restart.
  */
 export function startPreview(name: string, version: number | undefined, port: number): Promise<Server> {
+  // A large landscape takes seconds to build and the page polls every second, so the scene is kept
+  // until the design file changes.
+  let cache: { key: string; json: string } | undefined;
+  const sceneJson = (): string => {
+    const key = readFileSync(designFilePath(name, version), "utf8");
+    if (cache?.key === key) return cache.json;
+    cache = { key, json: JSON.stringify(buildScene(loadDesign(name, version))) };
+    return cache.json;
+  };
   const server = createServer((req, res) => {
-    const path = new URL(req.url ?? "/", "http://localhost").pathname;
     try {
+      const path = requestPath(req.url);
+      if (path === undefined) {
+        res.writeHead(400, { "content-type": "text/plain; charset=utf-8" }).end("bad request");
+        return;
+      }
       if (path === "/scene.json") {
-        const scene = buildScene(loadDesign(name, version));
+        const json = sceneJson();
         res.writeHead(200, { "content-type": TYPES[".json"]!, "cache-control": "no-store" });
-        res.end(JSON.stringify(scene));
+        res.end(json);
         return;
       }
       const file = FILES[path];

@@ -5,6 +5,7 @@ import { checkDesign } from "./check.js";
 import { loadDesign } from "./designs.js";
 import { startPreview } from "./preview.js";
 import { renderDesign } from "./render.js";
+import { setupCommands } from "./setup.js";
 
 const USAGE = `usage:
   cli validate <agentcraft-anchors.json>
@@ -52,6 +53,9 @@ function designFromFlags(args: string[]): ReturnType<typeof loadDesign> {
   return loadDesign(name, version === undefined ? undefined : Number(version));
 }
 
+/** Volumes above this many cells get no `.schem`. */
+const SCHEM_LIMIT = 4_000_000;
+
 const [command, ...rest] = process.argv.slice(2);
 
 if (command === "validate" && rest[0]) {
@@ -75,11 +79,18 @@ if (command === "validate" && rest[0]) {
   requireClean(design);
   const { volume, layout } = renderDesign(design, { origin: parseOrigin(flag(rest, "origin")) });
   mkdirSync(out, { recursive: true });
-  writeFileSync(join(out, "office.schem"), volume.toSchem());
-  writeFileSync(join(out, "office.nbt"), volume.toStructure());
+  // The Sponge schematic holds every cell and is built from a JavaScript array, so it is only written for volumes that fit.
+  const schem = volume.width * volume.height * volume.length <= SCHEM_LIMIT;
+  if (schem) writeFileSync(join(out, `${design.name}.schem`), volume.toSchem());
+  writeFileSync(join(out, `${design.name}.nbt`), volume.toStructure());
   writeFileSync(join(out, ANCHORS_FILE), serializeLayout(layout));
-  console.log(`wrote office.schem, office.nbt and ${ANCHORS_FILE} to ${out}`);
+  console.log(`wrote ${schem ? `${design.name}.schem, ` : ""}${design.name}.nbt and ${ANCHORS_FILE} to ${out}${schem ? "" : " (no .schem: volume too large)"}`);
   report(layout);
+  const origin = parseOrigin(flag(rest, "origin"));
+  const commands = setupCommands(design, origin);
+  writeFileSync(join(out, `${design.name}.commands.txt`), commands.join("\n") + "\n");
+  const lines = commands.map((c) => `  ${c}`).join("\n");
+  console.log(`\nIn game, with the files copied into the world (also saved as ${design.name}.commands.txt):\n${lines}`);
 } else {
   console.error(USAGE);
   process.exit(2);

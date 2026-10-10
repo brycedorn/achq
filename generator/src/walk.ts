@@ -35,8 +35,14 @@ export class Walk {
 
   /** Collision top of the block at (x, y, z); undefined for air, no-collision blocks and out-of-volume cells. */
   top(x: number, y: number, z: number): number | undefined {
-    return this.inside(x, y, z) ? collisionTop(this.volume.get(x, y, z)) : undefined;
+    const id = this.volume.idAt(x, y, z);
+    if (id === 0) return undefined;
+    // Cached per palette id: big volumes call this millions of times with a few dozen distinct states.
+    if (!this.tops.has(id)) this.tops.set(id, collisionTop(this.volume.stateOf(id)));
+    return this.tops.get(id);
   }
+
+  private readonly tops = new Map<number, number | undefined>();
 
   /** Feet height of a walkable cell, or undefined when an agent cannot stand there. */
   floor(x: number, y: number, z: number): number | undefined {

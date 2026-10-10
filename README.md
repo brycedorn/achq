@@ -31,7 +31,7 @@ Extra anchors (such as `cam_<name>`) are fine.
 
 ## Repo layout
 
-- `generator/`: the TypeScript toolkit. Writes `office.schem` and `agentcraft-anchors.json` (`npm run generate`) and validates anchor files (`npm run validate`).
+- `generator/`: the TypeScript toolkit. Renders designs to a `.nbt`, a `.schem` and `agentcraft-anchors.json` (`npm run generate`) and validates anchor files (`npm run validate`).
 - `mod/`: the AgentCraft Fabric mod, kept as the reference implementation and test target. The files that read anchors, `HqClientFeature.java` and `AgentManager.java`, are the main coupling points to watch when merging upstream changes.
 - `docs/SPEC.md`: the ACHQ spec: architecture, anchor contract, tool research, scene ideas, and open questions.
 
