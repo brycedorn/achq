@@ -143,12 +143,56 @@ const fireplacePart = z.object({
 /**
  * Ground: a height field over `x` and `z`, bilinearly interpolated from `grid` (rows run along Z,
  * columns along X, each evenly spaced over the range), plus seeded value noise. Heights are the layer
- * of the top block. Inside `flat` the ground is exactly level, blending back to the grid over `margin`
- * blocks, so a building sits on a shelf. Steep ground shows `rock`; gentle ground shows `surface`.
- * Ground is never claimed: any other part may overwrite it.
+ * of the top block. Inside a `flat` area the ground is exactly level, blending back to the grid over
+ * `margin` blocks, so a building sits on a shelf. Trails and rivers are then cut into it. Steep ground
+ * shows `rock`; gentle ground shows `surface`. Ground is never claimed: any other part may overwrite it.
  */
-const flatRect = z.object({ x: cell, z: cell, y: int, margin: int.nonnegative() });
+const flatRect = z.object({
+  x: cell,
+  z: cell,
+  y: int,
+  margin: int.nonnegative(),
+  /** An ellipse inscribed in the box blends more naturally than a rectangle. */
+  shape: z.enum(["rect", "ellipse"]).default("rect"),
+  /** Gentle bumps added inside the area (zero keeps it exactly level). */
+  ripple: z.number().default(0),
+});
 const peak = z.object({ at: cell, height: z.number(), radius: z.number().positive(), sharpness: z.number().positive().default(1.5) });
+const polyline = z.array(z.tuple([z.number(), z.number()])).min(2);
+/** Heights along a line: `[fraction of its length, height]` pairs, joined by straight segments. */
+const profile = z.array(z.tuple([z.number().min(0).max(1), z.number()])).min(2);
+
+/**
+ * A path or street along `points`. The ground under it follows the height profile `y`, `width` wide,
+ * blending into the hillside over `margin` blocks, which cuts a bench into a slope. `lamps` puts a post and a lantern at its edge every `every` blocks, alternating sides.
+ */
+const trail = z.object({
+  points: polyline,
+  y: profile,
+  width: z.number().positive(),
+  margin: z.number().nonnegative(),
+  surface: block,
+  lamps: z.object({ every: z.number().positive(), post: block, lantern: block }).optional(),
+});
+
+/**
+ * A river along `points`, its water surface following the height profile `y`, `depth` deep and
+ * `width` wide, with banks blending over `margin`. It is frozen (`ice` all the way down) except along
+ * the `open` stretches, given as fractions of its length. Water never touches the volume edge, which
+ * would let it run out of a pasted structure, so the ends are always frozen.
+ */
+const river = z.object({
+  points: polyline,
+  y: profile,
+  width: z.number().positive(),
+  depth: z.number().int().positive(),
+  margin: z.number().nonnegative(),
+  open: z.array(z.tuple([z.number(), z.number()])).default([]),
+  bed: block,
+  ice: block,
+  water: block.default("minecraft:water"),
+});
+
 const terrainPart = z.object({
   ...common,
   type: z.literal("terrain"),
@@ -163,6 +207,8 @@ const terrainPart = z.object({
   flat: flatRect.optional(),
   /** More level areas, such as a village on the valley floor. Where they overlap, the strongest wins. */
   flats: z.array(flatRect).default([]),
+  trails: z.array(trail).default([]),
+  rivers: z.array(river).default([]),
   /** Solid blocks below the surface. Omit for solid down to layer 0; a number makes a shell (cliffs stay closed). */
   depth: z.number().int().positive().optional(),
   surface: block,
@@ -174,27 +220,36 @@ const terrainPart = z.object({
 });
 
 /**
+ * Where to scatter things over the ground of a terrain part: `count` sites inside `x` and `z`, on
+ * ground below `treeline` that is no steeper than `maxSlope`, at least `spacing` apart, outside the
+ * `exclude` rectangles `[x0, z0, x1, z1]`. `clusters` groups them with value noise (sites need noise
+ * above `threshold`), leaving clearings. `taper` thins them out towards the tree line.
+ */
+const scatterSchema = z.object({
+  x: cell,
+  z: cell,
+  count: z.number().int().positive(),
+  treeline: int,
+  maxSlope: z.number().int().nonnegative().default(1),
+  spacing: z.number().int().positive().default(4),
+  exclude: z.array(z.tuple([int, int, int, int])).default([]),
+  clusters: z.object({ scale: z.number().positive(), threshold: z.number() }).optional(),
+  /** Density thins out over this many blocks below the tree line (0 keeps it even). */
+  taper: z.number().nonnegative().default(0),
+});
+
+/**
  * Snow-laden spruce trees standing on the ground of another part: those listed in `at`, and a forest
- * of `count` more scattered over `scatter.x` and `scatter.z`. Scattered trees only grow on gentle
- * ground below `treeline`, at least `spacing` apart, outside the `exclude` rectangles `[x0, z0, x1, z1]`.
- * Trees are clipped at the volume edge.
+ * scattered by `scatter`. A fraction `dead` of the scattered trees are bare, with a few stub branches.
+ * Trees keep clear of paths, streets and rivers, and are clipped at the volume edge.
  */
 const treesPart = z.object({
   ...common,
   type: z.literal("trees"),
   on: z.string(),
   at: z.array(cell).default([]),
-  scatter: z
-    .object({
-      x: cell,
-      z: cell,
-      count: z.number().int().positive(),
-      treeline: int,
-      maxSlope: z.number().int().nonnegative().default(1),
-      spacing: z.number().int().positive().default(4),
-      exclude: z.array(z.tuple([int, int, int, int])).default([]),
-    })
-    .optional(),
+  scatter: scatterSchema.optional(),
+  dead: z.number().min(0).max(1).default(0),
   trunk: block,
   leaves: block,
   snow: block,
@@ -202,19 +257,40 @@ const treesPart = z.object({
   maxHeight: z.number().int().min(4),
 });
 
+/** Snow-capped boulders, `minSize` to `maxSize` blocks across, scattered like trees. */
+const bouldersPart = z.object({
+  ...common,
+  type: z.literal("boulders"),
+  on: z.string(),
+  scatter: scatterSchema,
+  minSize: z.number().int().min(1),
+  maxSize: z.number().int().min(1),
+  blocks: z.array(block).min(1),
+  snow: block,
+});
+
 /**
- * A snowy village on level ground of another part: a church at `at`, and up to `houses` small
- * houses scattered within `radius`, each with a glowing window and a street lamp. Houses only go on
- * ground that is flat under the whole footprint, so give the terrain a `flats` area here.
+ * A snowy village on ground of another part: a church at `at`, and up to `houses` houses within
+ * `radius`. Houses are cottages, or with `lodges` set (a fraction) larger lodges; some use the `accent`
+ * wall; `chimneys` adds stone chimneys. Each has a glowing window and a street lamp, and stands on a
+ * stone plinth where the ground slopes a little. Houses keep off trails, streets and rivers.
  */
 const villagePart = z.object({
   ...common,
   type: z.literal("village"),
   on: z.string(),
+  /** The middle of the village; houses are placed within `radius` of it. */
   at: cell,
+  /** Where the church stands, when not at `at`. */
+  church: cell.optional(),
   radius: z.number().int().positive(),
   houses: z.number().int().nonnegative(),
+  /** "classic" is the first layout (level ground only, ridges along Z); "varied" adds the options below. */
+  style: z.enum(["classic", "varied"]).default("classic"),
   wall: block,
+  accent: block.optional(),
+  lodges: z.number().min(0).max(1).default(0),
+  chimneys: z.boolean().default(false),
   stone: block,
   roof: block,
   ridge: block,
@@ -239,6 +315,7 @@ export const partSchema = z.discriminatedUnion("type", [
   fireplacePart,
   terrainPart,
   treesPart,
+  bouldersPart,
   villagePart,
 ]);
 
@@ -263,6 +340,18 @@ const shellSchema = z.preprocess(
   z.discriminatedUnion("kind", [boxShell, noShell]),
 );
 
+/**
+ * The mood of the place, applied in game with commands rather than blocks: a `biome` over the whole area
+ * (a cold one makes rain fall as snow, tints the sky and water), the `weather`, and the time of day.
+ * Vanilla has no snow weather as such: snow is rain in a cold biome.
+ */
+const atmosphereSchema = z.object({
+  biome: block.optional(),
+  weather: z.enum(["clear", "rain", "thunder"]).optional(),
+  /** Ticks into the day: 0 sunrise, 6000 noon, 12000 sunset, 13000 dusk, 18000 midnight. */
+  time: z.number().int().nonnegative().optional(),
+});
+
 export const designSchema = z.object({
   name: z.string().min(1),
   version: z.number().int().positive(),
@@ -272,6 +361,7 @@ export const designSchema = z.object({
   /** Layer of the floor blocks; feet stand at `floorY + 1`. Layers below hold foundations and posts. */
   floorY: int.nonnegative().default(0),
   shell: shellSchema,
+  atmosphere: atmosphereSchema.optional(),
   parts: z.array(partSchema),
 });
 
@@ -289,7 +379,7 @@ export function parseDesign(json: unknown): Design {
   }
   const terrains = new Set(design.parts.filter((p) => p.type === "terrain").map((p) => p.id));
   for (const part of design.parts) {
-    if ((part.type === "trees" || part.type === "village") && !terrains.has(part.on)) throw new Error(`${part.type} '${part.id}' stands on '${part.on}', which is not a terrain part`);
+    if ((part.type === "trees" || part.type === "village" || part.type === "boulders") && !terrains.has(part.on)) throw new Error(`${part.type} '${part.id}' stands on '${part.on}', which is not a terrain part`);
     if (part.type === "trees" && part.at.length === 0 && !part.scatter) throw new Error(`trees '${part.id}' have neither 'at' nor 'scatter'`);
     for (const target of part.over) if (!seen.has(target)) throw new Error(`part '${part.id}' overrides unknown part '${target}'`);
   }
