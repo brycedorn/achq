@@ -18,7 +18,7 @@ const COLORS = {
   snow_block: "#f4f8f8", snow: "#f4f8f8", powder_snow: "#f0f5f5", ice: "#8fb2f0", packed_ice: "#7da5e8",
   spruce_leaves: "#2f5a2a", oak_leaves: "#4a7a2e", grass_block: "#6a9a40", dirt: "#7a5535", gravel: "#857f7c", sand: "#dbcf9b",
   water: "#3a6fd8", lava: "#e8641a", bookshelf: "#7a5a34", lectern: "#a77f4c", crafting_table: "#8d6b3d",
-  glowstone: "#f5d98a", sea_lantern: "#cfe7e3", lantern: "#f6c244", soul_lantern: "#58c7d1", campfire: "#c9742a",
+  shroomlight: "#f0a040", glowstone: "#f5d98a", sea_lantern: "#cfe7e3", lantern: "#f6c244", soul_lantern: "#58c7d1", campfire: "#c9742a",
   stripped_spruce_log: "#9c7a44", stripped_oak_log: "#b8945f", stripped_dark_oak_log: "#4a3520", stripped_birch_log: "#d7c98c",
   smooth_quartz: "#ece8e0", quartz_block: "#ece8e0", quartz: "#ece8e0", white_concrete: "#e9ecec",
   spruce_fence: "#7a5a34", dark_oak_fence: "#42301a", oak_fence: "#b8945f", birch_fence: "#d7c98c",
@@ -191,13 +191,14 @@ function cutLayer() {
   return defaultCut();
 }
 
-/** The highest layer that still shows the interior: one below the roof (the topmost layer covering most of the footprint). */
+/** Closed buildings start cut away to show the interior; anything with ground starts whole. */
 function defaultCut() {
-  const [w, h, l] = data.size;
-  const counts = new Array(h).fill(0);
-  for (let i = 0; i < data.cells.length; i += 4) counts[data.cells[i + 1]]++;
-  for (let y = h - 1; y >= 1; y--) if (counts[y] >= 0.8 * w * l) return y - 1;
-  return h - 1;
+  return data.hasTerrain ? data.size[1] - 1 : roofOff();
+}
+
+/** The layer that removes the roof but keeps the walls. */
+function roofOff() {
+  return data.roofCut ?? data.size[1] - 1;
 }
 
 const STANDING = /^(desk_|lounge|meeting|library|terminal|testbench|mergestation|user|entrance|spawn|goal_atrium)/;
@@ -269,7 +270,27 @@ function addWalkable() {
 
 const VIEWS = { iso: "Iso", top: "Plan", south: "S", north: "N", east: "E", west: "W" };
 
+/** Look through a camera anchor: its position, yaw and pitch, with room to look around from there. */
+function setCameraView(name) {
+  state.view = name;
+  const a = data.anchors[name];
+  const yaw = (a.yaw * Math.PI) / 180, pitch = ((a.pitch ?? 0) * Math.PI) / 180;
+  const dir = new THREE.Vector3(-Math.sin(yaw) * Math.cos(pitch), -Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)).normalize();
+  camera.up.set(0, 1, 0);
+  camera.fov = 70;
+  camera.position.set(a.x, a.y, a.z);
+  camera.updateProjectionMatrix();
+  controls?.dispose();
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.target.copy(camera.position).addScaledVector(dir, 0.05); // pivot at the eye, so dragging looks around
+  controls.enableDamping = false;
+  controls.update();
+  syncUi();
+  saveState();
+}
+
 function setView(name, keepControls = false) {
+  if (name.startsWith("cam_") && data.anchors[name]) return setCameraView(name);
   state.view = name;
   const [w, h, l] = data.size;
   const c = new THREE.Vector3(w / 2, h / 3, l / 2);
@@ -303,7 +324,8 @@ const $ = (id) => document.getElementById(id);
 
 function buildUi() {
   const views = $("views");
-  for (const [key, text] of Object.entries(VIEWS)) {
+  const cameras = Object.keys(data.anchors).filter((n) => n.startsWith("cam_")).map((n) => [n, n.slice(4)]);
+  for (const [key, text] of [...Object.entries(VIEWS), ...cameras]) {
     const b = document.createElement("button");
     b.textContent = text; b.dataset.view = key;
     b.onclick = () => setView(key);
@@ -314,7 +336,7 @@ function buildUi() {
     $(key).onchange = () => { state[key] = $(key).checked; rebuild(); saveState(); };
   }
   $("cut").oninput = () => { state.cut = Number($("cut").value); rebuild(); syncUi(); saveState(); };
-  $("cutaway").onclick = () => { state.cut = defaultCut(); rebuild(); syncUi(); saveState(); };
+  $("cutaway").onclick = () => { state.cut = roofOff(); rebuild(); syncUi(); saveState(); };
   $("cutall").onclick = () => { state.cut = data.size[1] - 1; rebuild(); syncUi(); saveState(); };
 }
 

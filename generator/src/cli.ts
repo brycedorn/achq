@@ -75,10 +75,10 @@ if (command === "validate" && rest[0]) {
   requireClean(design);
   const { volume, layout } = renderDesign(design, { origin: parseOrigin(flag(rest, "origin")) });
   mkdirSync(out, { recursive: true });
-  writeFileSync(join(out, "office.schem"), volume.toSchem());
-  writeFileSync(join(out, "office.nbt"), volume.toStructure());
+  writeFileSync(join(out, `${design.name}.schem`), volume.toSchem());
+  writeFileSync(join(out, `${design.name}.nbt`), volume.toStructure());
   writeFileSync(join(out, ANCHORS_FILE), serializeLayout(layout));
-  console.log(`wrote office.schem, office.nbt and ${ANCHORS_FILE} to ${out}`);
+  console.log(`wrote ${design.name}.schem, ${design.name}.nbt and ${ANCHORS_FILE} to ${out}`);
   report(layout);
 } else {
   console.error(USAGE);

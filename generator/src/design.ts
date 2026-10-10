@@ -140,6 +140,89 @@ const fireplacePart = z.object({
   cap: block,
 });
 
+/**
+ * Ground: a height field over `x` and `z`, bilinearly interpolated from `grid` (rows run along Z,
+ * columns along X, each evenly spaced over the range), plus seeded value noise. Heights are the layer
+ * of the top block. Inside `flat` the ground is exactly level, blending back to the grid over `margin`
+ * blocks, so a building sits on a shelf. Steep ground shows `rock`; gentle ground shows `surface`.
+ * Ground is never claimed: any other part may overwrite it.
+ */
+const flatRect = z.object({ x: cell, z: cell, y: int, margin: int.nonnegative() });
+const peak = z.object({ at: cell, height: z.number(), radius: z.number().positive(), sharpness: z.number().positive().default(1.5) });
+const terrainPart = z.object({
+  ...common,
+  type: z.literal("terrain"),
+  x: cell,
+  z: cell,
+  grid: z.array(z.array(z.number())).min(2),
+  noise: z.object({ amplitude: z.number(), scale: z.number().positive() }).default({ amplitude: 0, scale: 6 }),
+  /** Peaks added on top of the grid: `height` at the centre falling to nothing at `radius`. */
+  peaks: z.array(peak).default([]),
+  /** Ridged noise that roughens high ground into crags; it fades in above the height `above`. */
+  ridged: z.object({ amplitude: z.number(), scale: z.number().positive(), above: z.number().positive() }).optional(),
+  flat: flatRect.optional(),
+  /** More level areas, such as a village on the valley floor. Where they overlap, the strongest wins. */
+  flats: z.array(flatRect).default([]),
+  /** Solid blocks below the surface. Omit for solid down to layer 0; a number makes a shell (cliffs stay closed). */
+  depth: z.number().int().positive().optional(),
+  surface: block,
+  rock: block,
+  rockAlt: block.default("minecraft:andesite"),
+  base: block,
+  /** The ground counts as steep, and shows rock, where a neighbouring column differs by this much. */
+  rockSlope: z.number().int().positive().default(2),
+});
+
+/**
+ * Snow-laden spruce trees standing on the ground of another part: those listed in `at`, and a forest
+ * of `count` more scattered over `scatter.x` and `scatter.z`. Scattered trees only grow on gentle
+ * ground below `treeline`, at least `spacing` apart, outside the `exclude` rectangles `[x0, z0, x1, z1]`.
+ * Trees are clipped at the volume edge.
+ */
+const treesPart = z.object({
+  ...common,
+  type: z.literal("trees"),
+  on: z.string(),
+  at: z.array(cell).default([]),
+  scatter: z
+    .object({
+      x: cell,
+      z: cell,
+      count: z.number().int().positive(),
+      treeline: int,
+      maxSlope: z.number().int().nonnegative().default(1),
+      spacing: z.number().int().positive().default(4),
+      exclude: z.array(z.tuple([int, int, int, int])).default([]),
+    })
+    .optional(),
+  trunk: block,
+  leaves: block,
+  snow: block,
+  minHeight: z.number().int().min(4),
+  maxHeight: z.number().int().min(4),
+});
+
+/**
+ * A snowy village on level ground of another part: a church at `at`, and up to `houses` small
+ * houses scattered within `radius`, each with a glowing window and a street lamp. Houses only go on
+ * ground that is flat under the whole footprint, so give the terrain a `flats` area here.
+ */
+const villagePart = z.object({
+  ...common,
+  type: z.literal("village"),
+  on: z.string(),
+  at: cell,
+  radius: z.number().int().positive(),
+  houses: z.number().int().nonnegative(),
+  wall: block,
+  stone: block,
+  roof: block,
+  ridge: block,
+  light: block,
+  post: block,
+  lantern: block,
+});
+
 export const partSchema = z.discriminatedUnion("type", [
   spotPart,
   deskRowPart,
@@ -154,6 +237,9 @@ export const partSchema = z.discriminatedUnion("type", [
   gableEndPart,
   deckPart,
   fireplacePart,
+  terrainPart,
+  treesPart,
+  villagePart,
 ]);
 
 const boxShell = z.object({
@@ -201,7 +287,10 @@ export function parseDesign(json: unknown): Design {
     if (seen.has(part.id)) throw new Error(`duplicate part id '${part.id}'`);
     seen.add(part.id);
   }
+  const terrains = new Set(design.parts.filter((p) => p.type === "terrain").map((p) => p.id));
   for (const part of design.parts) {
+    if ((part.type === "trees" || part.type === "village") && !terrains.has(part.on)) throw new Error(`${part.type} '${part.id}' stands on '${part.on}', which is not a terrain part`);
+    if (part.type === "trees" && part.at.length === 0 && !part.scatter) throw new Error(`trees '${part.id}' have neither 'at' nor 'scatter'`);
     for (const target of part.over) if (!seen.has(target)) throw new Error(`part '${part.id}' overrides unknown part '${target}'`);
   }
   return design;

@@ -4,11 +4,11 @@ import { parseDesign } from "../src/design.js";
 import { loadDesign } from "../src/designs.js";
 import { renderDesign } from "../src/render.js";
 
-const design = loadDesign("snowy-chalet");
+const design = loadDesign("snowy-chalet", 1);
 const { volume, layout, conflicts } = renderDesign(design, { origin: [0, 0, 0] });
 const name = (x: number, y: number, z: number) => volume.get(x, y, z).replace(/\[.*$/, "");
 
-describe("snowy-chalet", () => {
+describe("snowy-chalet v1", () => {
   it("passes every design check", () => {
     expect(checkDesign(design)).toEqual([]);
     expect(conflicts).toEqual([]);

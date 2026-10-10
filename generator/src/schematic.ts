@@ -9,9 +9,14 @@ export const DEFAULT_DATA_VERSION = 4325;
 
 const AIR = "minecraft:air";
 
+/** Volumes up to this many cells keep their air in the structure file. */
+const SMALL_VOLUME = 250_000;
+
 /** A dense block grid in local coordinates, x east, y up, z south. */
 export class Volume {
   private readonly palette = new Map<string, number>([[AIR, 0]]);
+  /** States by palette id, so lookups by id are direct. */
+  private readonly states: string[] = [AIR];
   private readonly cells: Uint16Array;
 
   constructor(
@@ -34,14 +39,29 @@ export class Volume {
     if (id === undefined) {
       id = this.palette.size;
       this.palette.set(state, id);
+      this.states.push(state);
     }
     this.cells[this.index(x, y, z)] = id;
   }
 
   get(x: number, y: number, z: number): string {
-    const id = this.cells[this.index(x, y, z)];
-    for (const [state, i] of this.palette) if (i === id) return state;
-    return AIR;
+    return this.states[this.cells[this.index(x, y, z)]!] ?? AIR;
+  }
+
+  /** Palette id of the block at (x, y, z); 0 is air. Out-of-volume cells read as air. */
+  idAt(x: number, y: number, z: number): number {
+    if (x < 0 || x >= this.width || y < 0 || y >= this.height || z < 0 || z >= this.length) return 0;
+    return this.cells[x + z * this.width + y * this.width * this.length]!;
+  }
+
+  /** The block state for a palette id. */
+  stateOf(id: number): string {
+    return this.states[id] ?? AIR;
+  }
+
+  /** Number of distinct block states placed so far, air included. */
+  get paletteSize(): number {
+    return this.states.length;
   }
 
   /** Every non-air block as `[x, y, z, state]`, in index order. */
@@ -97,8 +117,12 @@ export class Volume {
     return gzipSync(writeUncompressed(root, "big"));
   }
 
-  /** Vanilla structure template (`.nbt`), loadable with a structure block. Air is written so a load clears the area. */
-  toStructure(dataVersion = DEFAULT_DATA_VERSION): Buffer {
+  /**
+   * Vanilla structure template (`.nbt`), loadable with a structure block or `/place template`. Air is
+   * written for small volumes, so a load clears the area; for large volumes it is left out, which
+   * keeps the file and the load small but means the area must already be clear.
+   */
+  toStructure(dataVersion = DEFAULT_DATA_VERSION, includeAir = this.cells.length <= SMALL_VOLUME): Buffer {
     const palette = Array.from(this.palette.keys(), (state): Compound["value"] => {
       const { name, properties } = parseState(state);
       const entry: Compound["value"] = { Name: str(name) };
@@ -111,12 +135,15 @@ export class Volume {
       return entry;
     });
 
-    const blocks = Array.from(this.cells, (id, i): Compound["value"] => {
+    const blocks: Compound["value"][] = [];
+    for (let i = 0; i < this.cells.length; i++) {
+      const id = this.cells[i]!;
+      if (id === 0 && !includeAir) continue;
       const x = i % this.width;
       const z = Math.floor(i / this.width) % this.length;
       const y = Math.floor(i / (this.width * this.length));
-      return { pos: intList([x, y, z]), state: { type: "int", value: id } };
-    });
+      blocks.push({ pos: intList([x, y, z]), state: { type: "int", value: id } });
+    }
 
     const root: NBT = {
       type: "compound",
