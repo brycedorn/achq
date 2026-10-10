@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ACHQ preview</title>
+<style>
+  :root { color-scheme: dark; --bg: #14161a; --panel: #1d2026e6; --line: #333943; --text: #dfe3ea; --dim: #8b93a1; --bad: #ff7b72; --good: #7ee787; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, sans-serif; overflow: hidden; }
+  canvas { display: block; }
+  .panel { position: absolute; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; backdrop-filter: blur(6px); }
+  #hud { top: 12px; left: 12px; max-width: 360px; max-height: calc(100% - 24px); overflow: auto; }
+  #hud h1 { font-size: 14px; margin: 0 0 2px; }
+  #hud .sub { color: var(--dim); margin-bottom: 8px; }
+  #problems { margin: 8px 0 0; padding-left: 16px; color: var(--bad); }
+  #problems.ok { list-style: none; padding: 0; color: var(--good); }
+  #controls { top: 12px; right: 12px; display: grid; gap: 8px; min-width: 190px; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  button { background: #2a2f38; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 9px; cursor: pointer; font: inherit; }
+  button:hover { background: #343a45; }
+  button.on { border-color: #6aa9ff; }
+  label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  input[type=range] { width: 100%; }
+  #legend { bottom: 12px; left: 12px; color: var(--dim); display: flex; gap: 12px; flex-wrap: wrap; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; }
+  @media (max-width: 640px) { #controls { top: auto; bottom: 56px; right: 12px; } #hud { max-width: calc(100% - 24px); } }
+</style>
+</head>
+<body>
+<div id="hud" class="panel">
+  <h1 id="title">Loading...</h1>
+  <div class="sub" id="sub"></div>
+  <ul id="problems"></ul>
+</div>
+<div id="controls" class="panel">
+  <div class="row" id="views"></div>
+  <label><input type="checkbox" id="anchors" checked> Anchors</label>
+  <label><input type="checkbox" id="labels"> Labels</label>
+  <label><input type="checkbox" id="walk"> Walkable floor</label>
+  <div>
+    <div class="row" style="justify-content: space-between"><span>Show layers up to</span><b id="cutValue"></b></div>
+    <input type="range" id="cut" min="0" max="0" value="0">
+    <div class="row" style="margin-top: 4px"><button id="cutaway">Roof off</button><button id="cutall">All</button></div>
+  </div>
+</div>
+<div id="legend" class="panel">
+  <span><i class="dot" style="background:#4da3ff"></i>agent spot (arrow = facing)</span>
+  <span><i class="dot" style="background:#ffb454"></i>block surface</span>
+  <span><i class="dot" style="background:#c792ea"></i>camera</span>
+  <span><i class="dot" style="background:#3fb950"></i>reachable</span>
+  <span><i class="dot" style="background:#f85149"></i>unreachable</span>
+</div>
+<script type="importmap">
+{ "imports": { "three": "/three/three.module.min.js", "three/addons/": "/three-addons/" } }
+</script>
+<script type="module" src="/viewer.js"></script>
+</body>
+</html>

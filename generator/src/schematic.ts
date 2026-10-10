@@ -44,6 +44,19 @@ export class Volume {
     return AIR;
   }
 
+  /** Every non-air block as `[x, y, z, state]`, in index order. */
+  *blocks(): Generator<[number, number, number, string]> {
+    const states = Array.from(this.palette.keys());
+    for (let i = 0; i < this.cells.length; i++) {
+      const id = this.cells[i]!;
+      if (id === 0) continue;
+      const x = i % this.width;
+      const z = Math.floor(i / this.width) % this.length;
+      const y = Math.floor(i / (this.width * this.length));
+      yield [x, y, z, states[id]!];
+    }
+  }
+
   /** Fill an inclusive box. Corners may be given in any order. */
   fill(a: Vec3, b: Vec3, state: string): void {
     for (let y = Math.min(a[1], b[1]); y <= Math.max(a[1], b[1]); y++)

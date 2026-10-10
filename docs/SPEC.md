@@ -54,7 +54,7 @@ Required names:
 3. **Revisable**: a revision changes only what the feedback asks for. Fixtures the feedback did not mention keep their positions, so a tweak does not move the whole building.
 4. **Additive mod changes only**: new code goes in its own package (`dev.agentcraft.achq`), and existing upstream files are left alone, so upstream merges stay easy. WorldEdit is never a required dependency; `.schem` and `.nbt` are outputs for people who have it.
 5. **Standing spots are safe**: every agent spot has a solid block under it and two air blocks above it.
-6. **Reachable**: a path exists from `spawn` to every desk and station. Not enforced yet.
+6. **Reachable**: a path exists from `spawn` to every desk and station. Enforced by `check`, using the same movement rules as the mod's `GridPathfinder` (8 directions, no corner cutting, 1-block steps; floor needs a collision top of at least 0.9). Agents can climb any 1-block ledge, including furniture, so a wall must be 3 high to stop them.
 7. **Round-trip tested**: `.schem` output is parsed back in tests, not only written.
 8. **Readable output**: one command prints what was written and whether the layout validates.
 9. **Licensing**: MIT, same as upstream. The name ACHQ does not claim to be the official project.
@@ -63,6 +63,8 @@ Required names:
 
 Commands (from `generator/`):
 - `npm run generate -- --design <name> [--version N] --origin x,y,z --out <dir>` renders `designs/<name>/v<N>.json` (latest when no version) to `office.schem`, `office.nbt` and `agentcraft-anchors.json`, then validates.
+- `npm run check -- --design <name> [--version N]` runs every design check: the anchor contract, parts overwriting each other, parts outside the volume, seats (bottom stairs facing right, free right-hand cell, head room), slot spacing of at least 1.6, standing spots, and reachability from `spawn`. `generate` runs the same checks first and writes nothing if any fail.
+- `npm run preview -- --design <name> [--version N] [--port N]` serves a 3D viewer at `http://localhost:5173/` (three.js, no build step, no Minecraft assets). It shows blocks as flat-coloured boxes with the real shapes of slabs, stairs and lanterns, the anchors with facing arrows and optional labels, a walkable-floor overlay (green reachable, red not), the check results, a layer slider (`Roof off` is the default cutaway), and fixed views (iso, plan, four elevations). The scene is rebuilt from the design file on every request and the page polls, so editing the JSON updates the view within a second. View state lives in the URL hash (`#view=top&walk=1&labels=1&cut=3`), so any view can be linked or scripted. Flat colours are enough to judge massing, layout, sightlines and seats; they cannot judge how real textures look together.
 - `npm run validate -- <agentcraft-anchors.json>` checks a layout file.
 
 Planned commands (not built):
@@ -134,7 +136,7 @@ The anchor data is not an isolated config: the mod's Java reads it directly, so 
 ## Repo layout
 
 ```
-generator/    TypeScript toolkit (Node 22, vitest, zod, prismarine-nbt)
+generator/    TypeScript toolkit (Node 22, vitest, zod, prismarine-nbt); viewer/ is the browser preview page (three.js)
 designs/      saved design versions, designs/<name>/v<N>.json
 mod/          AgentCraft Fabric mod (Gradle, Java 25, MC 26.3), reference and test target
 docs/         SPEC.md (this file)
@@ -148,7 +150,7 @@ docs/         SPEC.md (this file)
 - **Mod loader**: a `/achq load <design> [version]` command that places a build from a file in chunks over many ticks, clears the previous version's bounds first, and installs the anchors file in the same step. Not built; the design of the file it reads is open.
 - **Mod blocks**: `mod/FEATURES.md` says the mod's own blocks carry a binding string (monitor = agent id, status lamp = `agent:<id>`, and so on) that the HQ builder sets, and `HqWorldDriver` drives their state. A generated office with vanilla stand-ins probably shows no live monitors or lamps. Whether anchors alone are enough for agent movement is untested.
 - **Seats**: the generator now places a bottom-half stairs block at every `desk_*`, `lounge*` and `meeting*` anchor with a free cell on the right (tested). Whether the mod's agents sit and walk correctly is not yet confirmed in game with agents running.
-- **Reachability**: how to check a walkable path from spawn to every anchor. The mod's `GridPathfinder.java` is the reference.
+- **Reachability**: implemented in `generator/src/walk.ts` as a mirror of `GridPathfinder.java`. Only blocks the generator places have exact collision heights; unknown blocks count as full blocks. Not yet compared against the mod on a real world.
 - **Hand edits**: whether to read hand-built changes back into the design, or keep the design file as the only source of truth. The second is the v1 rule.
 - **Design format**: decided as parts with ids (see Generator). Open: a raw `fill` part type for one-offs, and a terrain section for the chalet.
 - **Terrain size**: a mountain range in one schematic is a very large paste. WorldEdit has block-change limits, and the HQ world game rule is capped at 1,000,000 block modifications (`mod/DEV.md`). The paste may need to be split into tiles, or the terrain written another way.

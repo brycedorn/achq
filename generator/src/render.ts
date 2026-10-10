@@ -10,12 +10,15 @@ const slot = (station: string, n: number) => (n === 1 ? station : `${station}_${
 
 export type Placement = { origin: readonly [number, number, number] };
 
+/** Two parts wrote different blocks to the same cell. The later part wins in the volume. */
+export type Conflict = { cell: readonly [number, number, number]; first: string; second: string };
+
 /**
  * Render a design into a block volume and its anchors file. Coordinates are local (x east, y up,
  * z south, floor block at y=0, feet at y=1) until the paste origin is added to the anchors.
  * Parts are applied in list order, which fixes the palette and anchor order, so output is deterministic.
  */
-export function renderDesign(design: Design, { origin }: Placement): { volume: Volume; layout: Layout } {
+export function renderDesign(design: Design, { origin }: Placement): { volume: Volume; layout: Layout; conflicts: Conflict[] } {
   const [width, height, length] = design.size;
   const v = new Volume(width, height, length);
   const [ox, oy, oz] = origin;
@@ -30,8 +33,26 @@ export function renderDesign(design: Design, { origin }: Placement): { volume: V
    * The cell to the agent's right must stay free floor, which the layouts guarantee by spacing.
    */
   const seat = (anchor: string, x: number, z: number, look: Direction, block: string) => {
-    v.set(x, 1, z, `${block}[facing=${OPPOSITE[look]},half=bottom]`);
+    set(x, 1, z, `${block}[facing=${OPPOSITE[look]},half=bottom]`);
     spot(anchor, x, z, look);
+  };
+
+  // Parts write through `set`/`fill` so overlapping parts are reported, not silently overwritten.
+  // The shell is written directly: parts may deliberately replace wall or floor cells.
+  const claims = new Map<number, string>();
+  const conflicts: Conflict[] = [];
+  let current = "shell";
+  const set = (x: number, y: number, z: number, state: string) => {
+    const key = x + width * (z + length * y);
+    const owner = claims.get(key);
+    if (owner !== undefined && owner !== current) conflicts.push({ cell: [x, y, z], first: owner, second: current });
+    claims.set(key, current);
+    v.set(x, y, z, state);
+  };
+  const fill = (a: readonly [number, number, number], b: readonly [number, number, number], state: string) => {
+    for (let y = Math.min(a[1], b[1]); y <= Math.max(a[1], b[1]); y++)
+      for (let z = Math.min(a[2], b[2]); z <= Math.max(a[2], b[2]); z++)
+        for (let x = Math.min(a[0], b[0]); x <= Math.max(a[0], b[0]); x++) set(x, y, z, state);
   };
 
   const { shell } = design;
@@ -52,6 +73,7 @@ export function renderDesign(design: Design, { origin }: Placement): { volume: V
   spot("spawn", shell.doorX, 2, "south");
 
   const render = (part: Part): void => {
+    current = part.id;
     switch (part.type) {
       case "spot":
         spot(part.anchor, part.at[0], part.at[1], part.look);
@@ -60,32 +82,32 @@ export function renderDesign(design: Design, { origin }: Placement): { volume: V
         const [x0, deskZ] = part.at;
         part.agents.forEach((agent, i) => {
           const x = x0 + part.spacing * i;
-          v.set(x, 1, deskZ, part.desk);
-          v.set(x, 2, deskZ, part.monitor);
+          set(x, 1, deskZ, part.desk);
+          set(x, 2, deskZ, part.monitor);
           seat(`desk_${agent}`, x, deskZ - 1, "south", part.chair);
           put(`monitor_${agent}`, x + 0.5, 2.5, deskZ, YAW.north);
         });
         break;
       }
       case "station":
-        v.set(part.at[0], 1, part.at[1] + 1, part.block);
+        set(part.at[0], 1, part.at[1] + 1, part.block);
         spot(part.station, part.at[0], part.at[1], "south");
         break;
       case "seatedTable":
-        v.fill([part.table.from[0], 1, part.table.from[1]], [part.table.to[0], 1, part.table.to[1]], part.table.block);
+        fill([part.table.from[0], 1, part.table.from[1]], [part.table.to[0], 1, part.table.to[1]], part.table.block);
         part.seats.forEach(([x, z, look], i) => seat(slot(part.station, i + 1), x, z, look, part.chair));
         break;
       case "lanternGrid":
-        for (const x of part.xs) for (const z of part.zs) v.set(x, part.y, z, part.block);
+        for (const x of part.xs) for (const z of part.zs) set(x, part.y, z, part.block);
         break;
       case "podium":
-        v.set(part.at[0], 1, part.at[1], part.block);
+        set(part.at[0], 1, part.at[1], part.block);
         put("decision_podium", part.at[0] + 0.5, 2, part.at[1] + 0.5, YAW.north);
         break;
       case "taskWall": {
         const [z0, z1] = part.z;
         const [y0, y1] = part.y;
-        v.fill([part.x, y0, z0], [part.x, y1, z1], part.block);
+        fill([part.x, y0, z0], [part.x, y1, z1], part.block);
         put("task_wall", part.x + 1, (y0 + y1 + 1) / 2, (z0 + z1 + 1) / 2, YAW.east);
         break;
       }
@@ -102,5 +124,5 @@ export function renderDesign(design: Design, { origin }: Placement): { volume: V
     bounds: { minX: ox, minY: oy, minZ: oz, maxX: ox + width - 1, maxY: oy + height - 1, maxZ: oz + length - 1 },
     anchors,
   };
-  return { volume: v, layout };
+  return { volume: v, layout, conflicts };
 }
