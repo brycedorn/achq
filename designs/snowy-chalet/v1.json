@@ -1,0 +1,101 @@
+{
+  "name": "snowy-chalet",
+  "version": 1,
+  "seed": 0,
+  "size": [31, 18, 36],
+  "floorY": 3,
+  "shell": { "kind": "none" },
+  "parts": [
+    { "type": "box", "id": "foundation", "from": [8, 0, 5], "to": [22, 2, 25], "block": "minecraft:stone_bricks" },
+    { "type": "box", "id": "floor", "from": [8, 3, 5], "to": [22, 3, 25], "block": "minecraft:spruce_planks" },
+
+    { "type": "box", "id": "wall-west-base", "from": [8, 4, 6], "to": [8, 5, 24], "block": "minecraft:stone_bricks" },
+    { "type": "box", "id": "wall-west-upper", "from": [8, 6, 6], "to": [8, 8, 24], "block": "minecraft:spruce_planks" },
+    { "type": "box", "id": "wall-east-base", "from": [22, 4, 6], "to": [22, 5, 24], "block": "minecraft:stone_bricks" },
+    { "type": "box", "id": "wall-east-upper", "from": [22, 6, 6], "to": [22, 8, 24], "block": "minecraft:spruce_planks" },
+
+    { "type": "box", "id": "window-west-north", "from": [8, 6, 9], "to": [8, 7, 11], "block": "minecraft:glass", "over": ["wall-west-upper"] },
+    { "type": "box", "id": "window-west-south", "from": [8, 6, 17], "to": [8, 7, 20], "block": "minecraft:glass", "over": ["wall-west-upper"] },
+    { "type": "box", "id": "window-east-north", "from": [22, 6, 8], "to": [22, 7, 10], "block": "minecraft:glass", "over": ["wall-east-upper"] },
+    { "type": "box", "id": "window-east-south", "from": [22, 6, 19], "to": [22, 7, 22], "block": "minecraft:glass", "over": ["wall-east-upper"] },
+
+    {
+      "type": "gableEnd", "id": "gable-north", "z": 5, "x": [8, 22], "y0": 4, "eaveY": 8, "overhang": 1,
+      "kind": "solid", "fill": "minecraft:spruce_planks", "glass": "minecraft:glass", "frame": "minecraft:dark_oak_planks",
+      "every": 3, "transomEvery": 4
+    },
+    { "type": "box", "id": "base-north", "from": [8, 4, 5], "to": [22, 5, 5], "block": "minecraft:stone_bricks", "over": ["gable-north"] },
+    { "type": "box", "id": "door", "from": [15, 4, 5], "to": [15, 5, 5], "block": "minecraft:air", "over": ["gable-north", "base-north"] },
+
+    {
+      "type": "gableEnd", "id": "gable-south", "z": 25, "x": [8, 22], "y0": 4, "eaveY": 8, "overhang": 1,
+      "kind": "glazed", "fill": "minecraft:spruce_planks", "glass": "minecraft:glass", "frame": "minecraft:dark_oak_planks",
+      "every": 4, "transomEvery": 5
+    },
+    { "type": "box", "id": "deck-door", "from": [17, 4, 25], "to": [17, 5, 25], "block": "minecraft:air", "over": ["gable-south"] },
+
+    {
+      "type": "gableRoof", "id": "roof", "x": [8, 22], "z": [4, 28], "eaveY": 8, "overhang": 1,
+      "body": "minecraft:spruce_stairs", "snow": "minecraft:smooth_quartz_stairs", "trim": "minecraft:dark_oak_stairs",
+      "ridgeBody": "minecraft:spruce_planks", "ridgeSnow": "minecraft:snow_block"
+    },
+
+    {
+      "type": "fireplace", "id": "fireplace", "wallX": 22, "faces": "west", "z": 14, "depth": 3, "halfWidth": 1,
+      "bodyHeight": 5, "top": 14, "stone": "minecraft:stone_bricks", "cap": "minecraft:smooth_quartz_slab[type=bottom]",
+      "over": ["wall-east-base", "wall-east-upper", "roof"]
+    },
+
+    { "type": "box", "id": "beam-1", "from": [11, 11, 9], "to": [19, 11, 9], "block": "minecraft:spruce_log[axis=x]" },
+    { "type": "box", "id": "beam-2", "from": [11, 11, 13], "to": [19, 11, 13], "block": "minecraft:spruce_log[axis=x]" },
+    { "type": "box", "id": "beam-3", "from": [11, 11, 17], "to": [19, 11, 17], "block": "minecraft:spruce_log[axis=x]" },
+    { "type": "box", "id": "beam-4", "from": [11, 11, 21], "to": [19, 11, 21], "block": "minecraft:spruce_log[axis=x]" },
+    { "type": "box", "id": "ridge-beam", "from": [15, 14, 6], "to": [15, 14, 24], "block": "minecraft:spruce_log[axis=z]" },
+    { "type": "lanternGrid", "id": "hall-lights", "xs": [12, 15, 18], "zs": [9, 13, 17, 21], "y": 10, "block": "minecraft:lantern[hanging=true]" },
+
+    {
+      "type": "deck", "id": "deck", "x": [5, 25], "z": [26, 33], "y": 3, "planks": "minecraft:dark_oak_planks",
+      "rail": { "block": "minecraft:spruce_fence", "sides": ["south", "east", "west"] },
+      "posts": { "block": "minecraft:spruce_log", "every": 4, "bottom": 0 }
+    },
+    { "type": "lanternGrid", "id": "deck-lights", "xs": [5, 15, 25], "zs": [33], "y": 5, "block": "minecraft:lantern" },
+    { "type": "box", "id": "tub-rim", "from": [20, 4, 29], "to": [23, 4, 32], "block": "minecraft:spruce_planks" },
+    { "type": "box", "id": "tub-water", "from": [21, 4, 30], "to": [22, 4, 31], "block": "minecraft:water", "over": ["tub-rim"] },
+
+    { "type": "spot", "id": "entrance", "anchor": "entrance", "at": [15, 6], "look": "south" },
+    { "type": "spot", "id": "spawn", "anchor": "spawn", "at": [15, 7], "look": "south" },
+
+    {
+      "type": "deskRow", "id": "desks-front", "at": [11, 22], "spacing": 4, "agents": ["marlow", "juniper", "kit"],
+      "desk": "minecraft:dark_oak_slab", "monitor": "minecraft:black_concrete", "chair": "minecraft:dark_oak_stairs"
+    },
+    {
+      "type": "deskRow", "id": "desks-back", "at": [13, 19], "spacing": 4, "agents": ["wren", "rowan", "tove"],
+      "desk": "minecraft:dark_oak_slab", "monitor": "minecraft:black_concrete", "chair": "minecraft:dark_oak_stairs"
+    },
+
+    { "type": "station", "id": "library", "station": "library", "at": [10, 12], "block": "minecraft:lectern" },
+    { "type": "station", "id": "terminal", "station": "terminal", "at": [10, 16], "block": "minecraft:lectern" },
+    { "type": "station", "id": "testbench", "station": "testbench", "at": [18, 8], "block": "minecraft:lectern" },
+    { "type": "station", "id": "mergestation", "station": "mergestation", "at": [20, 8], "block": "minecraft:lectern" },
+
+    {
+      "type": "seatedTable", "id": "meeting", "station": "meeting",
+      "table": { "from": [9, 9], "to": [14, 9], "block": "minecraft:spruce_slab" },
+      "chair": "minecraft:birch_stairs",
+      "seats": [[10, 8, "south"], [12, 8, "south"], [14, 8, "south"], [9, 10, "north"], [11, 10, "north"], [13, 10, "north"]]
+    },
+    {
+      "type": "seatedTable", "id": "lounge", "station": "lounge",
+      "table": { "from": [14, 14], "to": [16, 14], "block": "minecraft:spruce_slab" },
+      "chair": "minecraft:crimson_stairs",
+      "seats": [[14, 13, "south"], [16, 13, "south"], [14, 15, "north"], [16, 15, "north"], [12, 14, "east"], [18, 14, "west"]]
+    },
+
+    { "type": "spot", "id": "user", "anchor": "user", "at": [15, 10], "look": "south" },
+    { "type": "podium", "id": "podium", "at": [15, 11], "block": "minecraft:lectern" },
+    { "type": "spot", "id": "atrium", "anchor": "goal_atrium", "at": [15, 12], "look": "south" },
+    { "type": "taskWall", "id": "task-wall", "x": 9, "z": [12, 16], "y": [5, 7], "block": "minecraft:dark_oak_planks" },
+    { "type": "camera", "id": "overview", "name": "overview", "at": [17.5, 12.5, 7.5], "yaw": 45, "pitch": 20 }
+  ]
+}

@@ -7,10 +7,13 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "validate": "tsx src/cli.ts validate",
+    "check": "tsx src/cli.ts check",
+    "preview": "tsx src/cli.ts preview",
     "generate": "tsx src/cli.ts generate"
   },
   "dependencies": {
     "prismarine-nbt": "^2.8.0",
+    "three": "^0.170.0",
     "zod": "^3.25.0"
   },
   "devDependencies": {

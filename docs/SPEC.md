@@ -1,10 +1,10 @@
 # ACHQ — Spec
 
-A generator that turns a prompt or concept into an AgentCraft-compatible HQ: a building shell plus the anchors the mod needs to run agents inside it. The first test case is a cliffside ocean office; the goal is the pipeline, not one building.
+A generator that turns a prompt or concept into an AgentCraft-compatible HQ: a building shell plus the anchors the mod needs to run agents inside it. The first test case is a snowy mountain chalet with views of a mountain range; the goal is the pipeline, not one building.
 
 ## North star
 
-The user describes an office ("glass research station half-carved into an ocean cliff") and gets back two files: a schematic they paste with WorldEdit, and an anchors file the AgentCraft mod loads. The agents then sit at the desks, walk between stations, and spawn the player where the layout says, with no hand-fixing. The user can still place blocks by hand on top, and nothing the generator does requires changing the mod.
+The user describes an HQ ("a snowy chalet in the mountains with views of a mountain range") and gets back a build file and an anchors file. A small loader added to the mod places the build and installs the anchors; the build file also works with WorldEdit or a vanilla structure block. The agents then sit at the desks, walk between stations, and spawn the player where the layout says, with no hand-fixing. The user then tests the world and gives feedback ("more desk spacing", "move the library next to the fireplace"), and the generator revises that same design instead of starting over. Each revision is a new numbered version, so any earlier one can be regenerated. Nothing the generator does requires changing existing upstream mod code.
 
 ## Architecture
 
@@ -24,6 +24,7 @@ prompt / concept                      Generator (Node 22 + TypeScript)
 
 - **Anchors are hard constraints.** Desks, monitors, stations, and spawn are tracked data the mod reads back for agent motion and the player start. The generator fixes them first and generates only the look around them.
 - **The mod is untouched.** `mod/` is the reference implementation and test target. The files that read anchors, `HqClientFeature.java` and `AgentManager.java`, are the coupling points to watch when merging upstream.
+- **The design file is the source of truth.** A design is a plain JSON description of the HQ (rooms, fixtures, materials, anchor placements). The schematic and the anchors are rendered from it and are never edited directly. A prompt creates a design, and feedback produces the next version of it. Designs are saved as `designs/<name>/v<N>.json` and are committed.
 - **Local coordinates, then an origin.** The office is built in local coordinates (x east, y up, z south). A paste origin is added when anchors are written, because the mod stores absolute world positions.
 - Transport: none. Output is plain files. The anchors file is `agentcraft-anchors.json` in the world folder, loaded only in the world the mod treats as the HQ world (`AgentCraft HQ`).
 
@@ -49,23 +50,43 @@ Required names:
 ## Practicality requirements (non-negotiable)
 
 1. **Contract first**: a layout missing a required anchor, or with an anchor outside its bounds, fails validation and is never written as "ok".
-2. **Deterministic**: the same prompt-independent inputs (origin, name) give byte-identical output. Randomness, when added, takes a seed.
-3. **No mod changes**: nothing in the pipeline requires editing `mod/`.
-4. **Standing spots are safe**: every agent spot has a solid block under it and two air blocks above it.
-5. **Reachable**: a path exists from `spawn` to every desk and station. Not enforced yet.
-6. **Round-trip tested**: `.schem` output is parsed back in tests, not only written.
-7. **Readable output**: one command prints what was written and whether the layout validates.
-8. **Licensing**: MIT, same as upstream. The name ACHQ does not claim to be the official project.
+2. **Deterministic**: the same design version and origin give byte-identical output. Randomness, when added, takes a seed stored in the design.
+3. **Revisable**: a revision changes only what the feedback asks for. Fixtures the feedback did not mention keep their positions, so a tweak does not move the whole building.
+4. **Additive mod changes only**: new code goes in its own package (`dev.agentcraft.achq`), and existing upstream files are left alone, so upstream merges stay easy. WorldEdit is never a required dependency; `.schem` and `.nbt` are outputs for people who have it.
+5. **Standing spots are safe**: every agent spot has a solid block under it and two air blocks above it.
+6. **Reachable**: a path exists from `spawn` to every desk and station. Enforced by `check`, using the same movement rules as the mod's `GridPathfinder` (8 directions, no corner cutting, 1-block steps; floor needs a collision top of at least 0.9). Agents can climb any 1-block ledge, including furniture, so a wall must be 3 high to stop them.
+7. **Round-trip tested**: `.schem` output is parsed back in tests, not only written.
+8. **Readable output**: one command prints what was written and whether the layout validates.
+9. **Licensing**: MIT, same as upstream. The name ACHQ does not claim to be the official project.
 
 ## Generator
 
 Commands (from `generator/`):
-- `npm run generate -- --origin x,y,z --out <dir> [--name <layout name>]` writes `office.schem` and `agentcraft-anchors.json`, then validates.
+- `npm run generate -- --design <name> [--version N] --origin x,y,z --out <dir>` renders `designs/<name>/v<N>.json` (latest when no version) to `office.schem`, `office.nbt` and `agentcraft-anchors.json`, then validates.
+- `npm run check -- --design <name> [--version N]` runs every design check: the anchor contract, parts overwriting each other, parts outside the volume, seats (bottom stairs facing right, free right-hand cell, head room), slot spacing of at least 1.6, standing spots, and reachability from `spawn`. `generate` runs the same checks first and writes nothing if any fail.
+- `npm run preview -- --design <name> [--version N] [--port N]` serves a 3D viewer at `http://localhost:5173/` (three.js, no build step, no Minecraft assets). It shows blocks as flat-coloured boxes with the real shapes of slabs, stairs and lanterns, the anchors with facing arrows and optional labels, a walkable-floor overlay (green reachable, red not), the check results, a layer slider (`Roof off` is the default cutaway), and fixed views (iso, plan, four elevations). The scene is rebuilt from the design file on every request and the page polls, so editing the JSON updates the view within a second. View state lives in the URL hash (`#view=top&walk=1&labels=1&cut=3`), so any view can be linked or scripted. Flat colours are enough to judge massing, layout, sightlines and seats; they cannot judge how real textures look together.
 - `npm run validate -- <agentcraft-anchors.json>` checks a layout file.
 
-Current output: a fixed 25 x 8 x 19 office. Stone-brick box, glass south wall, a door on the north wall, six desks with monitors, six shared stations, a task wall, a podium, an atrium, and a spawn. Fixtures are vanilla stand-ins (black concrete monitors, lecterns for stations) because the mod's own blocks are not placed yet.
+Planned commands (not built):
+- `design new <name> "<prompt>"` creates `designs/<name>/v1.json`.
+- `design revise <name> "<feedback>"` reads the latest version and writes the next one.
+
+**Design file.** `src/design.ts` holds the zod schema. A design is a name, version, seed, size, a `shell` (materials, door, glass wall) and a list of **parts**, each with a unique `id` that a revision can target. Part types: `deskRow`, `station`, `seatedTable`, `lanternGrid`, `podium`, `taskWall`, `camera`, `spot`, and for buildings `box` (air carves), `gableRoof` (timber underside plus snow cap), `gableEnd` (solid or glazed with mullions), `deck` (railing and posts) and `fireplace` (stone body, hollow chimney, lit campfire). The shell is either the original box or `{"kind":"none"}`, where the parts build everything. `floorY` sets the floor layer so a foundation fits below it. A part may overwrite another only if it lists that part's id in `over`; `check` reports any other overwrite. Each part renders its blocks and its anchors (`src/render.ts`), and `seatedTable` and `deskRow` always emit seats that follow the seat contract. Parts apply in list order, which fixes palette and anchor order, so output is deterministic. Directions are names (`south`, ...), not yaw.
+
+Style notes live in `docs/styles/` (first: `snowy-chalet.md`, written from the images in `references/`). A design of a style reads its note.
+
+Current designs: `designs/snowy-chalet/v1.json` (the chalet building: pitched snow roof, glazed south gable, deck with hot tub, stone fireplace, timber beams, and the agent layout; no terrain, trees or path yet) and `designs/test-office/v1.json`, a 25 x 8 x 19 office. Stone-brick box, glass south wall, a door on the north wall, six desks with chairs and monitors, four lectern stations, a six-seat meeting table, a six-seat lounge, lanterns, a task wall, a podium, an atrium, and a spawn. Monitors, lecterns and the podium are vanilla stand-ins because the mod's own blocks are not placed yet. Verified in game: paste origin, anchors on solid ground, seats, lighting.
 
 Schematic format: Sponge v3, gzipped NBT, block index `x + z*Width + y*Width*Length`, varint block data. Written by hand with `prismarine-nbt` because `prismarine-schematic` is unlikely to know Minecraft 26.3. `DataVersion` defaults to 4325 (about 1.21.5); WorldEdit upgrades older versions and rejects newer ones.
+
+## Iteration loop
+
+1. `design new` turns a prompt into `v1.json`. `generate` renders it, and you paste it and test in game.
+2. You give feedback, in plain words or by editing the JSON by hand. `design revise` writes `v2.json`, changing only what the feedback touches.
+3. Render again and re-paste. Each version records its bounds, so the old footprint can be cleared first with WorldEdit (`//set 0` over the previous bounds). Without that, blocks the new version dropped stay behind.
+4. The anchors file's `revision` goes up with each version, and every version stays on disk, so you can go back.
+
+**Hand edits in the world.** Re-pasting overwrites any block you placed by hand inside the bounds. The v1 rule: the design file wins. A tweak you want to keep goes back in as feedback, or you make it after the last paste. The mod's own HQ builder keeps player changes by comparing against a stored plan (`FEATURES.md`); a tool that reads a hand-edited region back into the design, through a WorldEdit export, is a later option and is not designed yet.
 
 ## Build approach: don't place every block by hand
 
@@ -87,14 +108,26 @@ Schematic format: Sponge v3, gzipped NBT, block index `x + z*Width + y*Width*Len
 
 These tools generate decoration with no knowledge of anchors. The plan is to feed AgentCraft's anchor, spawn, and desk data in as constraints, or to generate the shell with them and then run the result through this project's validator.
 
-## Scene concepts: cliff overlooking the ocean
+## First example: snowy mountain chalet
+
+The chalet is the first design to build. It is a timber-and-stone lodge on a snowy slope, with a glass-fronted main hall facing a mountain range. Desks line the windows so each agent has the view, the lounge sits around a stone fireplace, and the entrance has a small porch with a snow-dusted roof.
+
+What it adds beyond a plain building:
+- **Terrain.** The range is generated terrain, not a built shape. A noise heightmap gives ridges, with snow and stone blocks above a snow line and spruce on the lower slopes. The build volume is much larger than the chalet: hundreds of blocks across, millions of blocks in total.
+- **Distance.** Render distance is 16 chunks (256 blocks) in the dev client, so the visible range has to sit inside that. Far peaks are drawn as larger, simpler shapes.
+- **Snow.** Snow layers and powder snow on roofs, ledges and slopes. A fresh world is superflat (grass at y=64), so the slope is built up from there.
+- **Warmth.** Lanterns, a fireplace and warm light inside against the cold outside.
+
+The terrain and the building are separate parts of the design, so a revision can change the range without moving the desks.
+
+## Other scene concepts: cliff overlooking the ocean
 
 1. **Glass-walled research station**: half-carved into the cliff face, half-cantilevered over the water. Each agent's workspace gets a different ocean view.
 2. **Lighthouse and dock cluster**: a tall central tower as the coordination hub, small satellite studios along the cliff edge joined by rope bridges, roughly one per agent.
 3. **Sunken amphitheater**: carved into the cliff top, open-air, ocean backdrop. A gathering or standup space more than individual offices.
 4. **Greenhouse / observatory**: heavy glass, a reflecting pool mirroring the sky, a contemplative feel.
 
-Which to prototype first is undecided.
+These come after the chalet.
 
 ## Fork policy
 
@@ -105,25 +138,31 @@ The anchor data is not an isolated config: the mod's Java reads it directly, so 
 ## Repo layout
 
 ```
-generator/    TypeScript toolkit (Node 22, vitest, zod, prismarine-nbt)
+generator/    TypeScript toolkit (Node 22, vitest, zod, prismarine-nbt); viewer/ is the browser preview page (three.js)
+designs/      saved design versions, designs/<name>/v<N>.json
 mod/          AgentCraft Fabric mod (Gradle, Java 25, MC 26.3), reference and test target
 docs/         SPEC.md (this file)
 ```
 
 ## Open questions
 
-- **Paste origin**: the generator assumes the schematic's min corner lands on `--origin`. Depends on how WorldEdit reads `Offset`. Untested.
-- **`DataVersion`**: 4325 is a guess; the real value for 26.3 is unknown.
-- **WorldEdit availability**: no confirmed build for Minecraft 26.3. Litematica is the fallback.
+- **Paste origin**: for the vanilla `.nbt` with a structure block, the min corner lands where expected (verified). For `.schem` with WorldEdit it depends on how `Offset` is read. Untested.
+- **`DataVersion`**: 4325 is a guess, but a structure block loaded the `.nbt` with it. The real value for 26.3 is unknown.
+- **WorldEdit availability**: no confirmed build for Minecraft 26.3, which is why it is not a dependency. Until the mod loader exists, small builds use a vanilla structure block (the `.nbt` output), which has a size limit per load. I believe it is 48 blocks per axis; this is not verified.
+- **Mod loader**: a `/achq load <design> [version]` command that places a build from a file in chunks over many ticks, clears the previous version's bounds first, and installs the anchors file in the same step. Not built; the design of the file it reads is open.
 - **Mod blocks**: `mod/FEATURES.md` says the mod's own blocks carry a binding string (monitor = agent id, status lamp = `agent:<id>`, and so on) that the HQ builder sets, and `HqWorldDriver` drives their state. A generated office with vanilla stand-ins probably shows no live monitors or lamps. Whether anchors alone are enough for agent movement is untested.
-- **Seats**: per the same file, every `desk_*`, `lounge*` and `meeting*` anchor must be a bottom-half stairs block with a free floor cell beside it, or agents stand inside the chair. The current office has no chairs, so its desk anchors break this rule.
-- **Reachability**: how to check a walkable path from spawn to every anchor. The mod's `GridPathfinder.java` is the reference.
-- **Which scene first**, and how the Claude-driven step feeds anchors in as constraints.
+- **Seats**: the generator now places a bottom-half stairs block at every `desk_*`, `lounge*` and `meeting*` anchor with a free cell on the right (tested). Whether the mod's agents sit and walk correctly is not yet confirmed in game with agents running.
+- **Reachability**: implemented in `generator/src/walk.ts` as a mirror of `GridPathfinder.java`. Only blocks the generator places have exact collision heights; unknown blocks count as full blocks. Not yet compared against the mod on a real world.
+- **Hand edits**: whether to read hand-built changes back into the design, or keep the design file as the only source of truth. The second is the v1 rule.
+- **Design format**: decided as parts with ids (see Generator). Open: a raw `fill` part type for one-offs, and a terrain section for the chalet.
+- **Terrain size**: a mountain range in one schematic is a very large paste. WorldEdit has block-change limits, and the HQ world game rule is capped at 1,000,000 block modifications (`mod/DEV.md`). The paste may need to be split into tiles, or the terrain written another way.
+- **Claude-driven step**: how it feeds anchors in as constraints.
 
 ## Definition of done for v1
 
-- `npm run generate` writes a schematic and an anchors file for the cliff office, and the layout validates.
+- `npm run generate` writes a schematic and an anchors file for the snowy chalet, and the layout validates.
 - Pasting the schematic at the origin puts the building where the anchors say it is, verified in game.
 - `/agentcraft anchors` in the HQ world lists the generated layout, and teleporting to `spawn` and a desk lands on safe ground.
 - Agents run in the generated office: they reach their desks and stations.
 - A prompt, not hand-written code, can produce a second office that also passes validation.
+- One round of feedback ("move the library to the east end") yields a `v2` that moves only the library, still validates, and can be pasted over `v1` after clearing its bounds.
