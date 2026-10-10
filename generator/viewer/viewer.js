@@ -19,11 +19,16 @@ const COLORS = {
   spruce_leaves: "#2f5a2a", oak_leaves: "#4a7a2e", grass_block: "#6a9a40", dirt: "#7a5535", gravel: "#857f7c", sand: "#dbcf9b",
   water: "#3a6fd8", lava: "#e8641a", bookshelf: "#7a5a34", lectern: "#a77f4c", crafting_table: "#8d6b3d",
   glowstone: "#f5d98a", sea_lantern: "#cfe7e3", lantern: "#f6c244", soul_lantern: "#58c7d1", campfire: "#c9742a",
+  stripped_spruce_log: "#9c7a44", stripped_oak_log: "#b8945f", stripped_dark_oak_log: "#4a3520", stripped_birch_log: "#d7c98c",
+  smooth_quartz: "#ece8e0", quartz_block: "#ece8e0", quartz: "#ece8e0", white_concrete: "#e9ecec",
+  spruce_fence: "#7a5a34", dark_oak_fence: "#42301a", oak_fence: "#b8945f", birch_fence: "#d7c98c",
+  mossy_cobblestone: "#6e7f62", stone_brick: "#7a7a7a", cobbled_deepslate: "#4a4a4d", polished_andesite: "#8b8b8b",
   glass: "#bfe3ee", tinted_glass: "#3a3340", barrel: "#7a5a34", copper_block: "#c06a4e", cut_copper: "#c06a4e",
   iron_block: "#d8d8d8", gold_block: "#f6d03e", obsidian: "#15101f", netherrack: "#6b3030",
 };
-const GLASSY = /(^|_)(glass|glass_pane|ice)$|stained_glass/;
+const GLASSY = /(^|_)(glass|glass_pane|ice)$|stained_glass|^water$/;
 const GLOWING = /^(lantern|soul_lantern|glowstone|sea_lantern|shroomlight|jack_o_lantern|torch|campfire)$/;
+const FENCE = /_fence$/;
 
 function hashColor(name) {
   let h = 0;
@@ -48,7 +53,23 @@ function parseState(state) {
 }
 
 /** Boxes `[x0, y0, z0, x1, y1, z1]` in 0..1 for the shapes the generator places; anything else is a full cube. */
-function boxesFor(name, props) {
+function boxesFor(name, props, neighbour) {
+  if (FENCE.test(name)) {
+    // A post, with two rails towards every neighbouring fence.
+    const out = [[0.375, 0, 0.375, 0.625, 1, 0.625]];
+    for (const [dx, dz, side] of [[0, -1, "north"], [0, 1, "south"], [-1, 0, "west"], [1, 0, "east"]]) {
+      if (!FENCE.test(neighbour(dx, dz) ?? "")) continue;
+      for (const [y0, y1] of [[0.375, 0.5625], [0.75, 0.9375]]) {
+        if (side === "north") out.push([0.4375, y0, 0, 0.5625, y1, 0.375]);
+        if (side === "south") out.push([0.4375, y0, 0.625, 0.5625, y1, 1]);
+        if (side === "west") out.push([0, y0, 0.4375, 0.375, y1, 0.5625]);
+        if (side === "east") out.push([0.625, y0, 0.4375, 1, y1, 0.5625]);
+      }
+    }
+    return out;
+  }
+  if (name === "campfire") return [[0, 0, 0, 1, 0.44, 1]];
+  if (name === "water") return [[0, 0, 0, 1, 0.88, 1]];
   if (name.endsWith("_slab")) {
     if (props.type === "double") return [[0, 0, 0, 1, 1, 1]];
     return props.type === "top" ? [[0, 0.5, 0, 1, 1, 1]] : [[0, 0, 0, 1, 0.5, 1]];
@@ -128,6 +149,8 @@ function rebuild() {
   // Blocks, grouped by material into instanced boxes.
   const groups = new Map();
   const parsed = data.palette.map(parseState);
+  const named = new Map();
+  for (let i = 0; i < data.cells.length; i += 4) named.set(`${data.cells[i]},${data.cells[i + 1]},${data.cells[i + 2]}`, parsed[data.cells[i + 3]].name);
   for (let i = 0; i < data.cells.length; i += 4) {
     const x = data.cells[i], y = data.cells[i + 1], z = data.cells[i + 2];
     if (y > cutLayer()) continue;
@@ -136,7 +159,8 @@ function rebuild() {
     const key = `${name}|${glass}`;
     let g = groups.get(key);
     if (!g) groups.set(key, (g = { color: colorOf(name), glass, glow: GLOWING.test(name), boxes: [] }));
-    for (const b of boxesFor(name, props)) g.boxes.push([x, y, z, b]);
+    const neighbour = (dx, dz) => named.get(`${x + dx},${y},${z + dz}`);
+    for (const b of boxesFor(name, props, neighbour)) g.boxes.push([x, y, z, b]);
   }
   const unit = new THREE.BoxGeometry(1, 1, 1);
   for (const g of groups.values()) {
@@ -350,7 +374,22 @@ async function load(first) {
 await load(true);
 setInterval(() => load(false), 1000);
 
+/** Re-read the URL hash (so a link or a scripted navigation changes the view without a reload). */
+function applyHash() {
+  const p = new URLSearchParams(location.hash.slice(1));
+  state.cut = p.has("cut") ? Number(p.get("cut")) : null;
+  state.anchors = p.get("anchors") !== "0";
+  state.labels = p.get("labels") === "1";
+  state.walk = p.get("walk") === "1";
+  for (const key of ["anchors", "labels", "walk"]) $(key).checked = state[key];
+  rebuild();
+  setView(p.get("view") ?? "iso");
+}
+addEventListener("hashchange", applyHash);
+
 function frame() {
+  // A page opened in a hidden pane starts with no size; follow the window every frame.
+  if (renderer.domElement.width !== Math.floor(innerWidth * renderer.getPixelRatio()) || renderer.domElement.height !== Math.floor(innerHeight * renderer.getPixelRatio())) resize();
   controls?.update();
   renderer.render(scene3, camera);
   requestAnimationFrame(frame);

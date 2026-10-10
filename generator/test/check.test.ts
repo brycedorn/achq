@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { checkDesign } from "../src/check.js";
-import { type Design, type Part, parseDesign } from "../src/design.js";
+import { type Design, type Part, type PartInput, parseDesign } from "../src/design.js";
 import { loadDesign } from "../src/designs.js";
 
 const base = loadDesign("test-office");
 
 /** The test office with its parts changed. */
-function variant(change: (parts: Part[]) => Part[]): Design {
+function variant(change: (parts: (Part | PartInput)[]) => (Part | PartInput)[]): Design {
   return parseDesign({ ...base, parts: change([...base.parts]) });
 }
-const add = (...extra: Part[]) => (parts: Part[]) => [...parts, ...extra];
+const add = (...extra: PartInput[]) => (parts: (Part | PartInput)[]) => [...parts, ...extra];
 const messages = (design: Design) => checkDesign(design).map((p) => `${p.where}: ${p.message}`).join("\n");
 
 describe("checkDesign", () => {
@@ -46,7 +46,7 @@ describe("checkDesign", () => {
 
   it("reports stations that spawn cannot reach", () => {
     // A three-high wall splits the room east of the door. Lower walls would not: agents step over one block, and climb the podium to cross two.
-    const wall: Part = { type: "taskWall", id: "wall", x: 13, z: [1, 17], y: [1, 3], block: "minecraft:stone" };
+    const wall: PartInput & { type: "taskWall" } = { type: "taskWall", id: "wall", x: 13, z: [1, 17], y: [1, 3], block: "minecraft:stone" };
     const found = messages(variant(add(wall)));
     expect(found).toMatch(/desk_tove: cannot be reached from spawn/);
     expect(found).toMatch(/mergestation: cannot be reached from spawn/);
