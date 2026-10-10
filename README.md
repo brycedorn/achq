@@ -2,7 +2,7 @@
 
 A toolkit that turns a prompt or concept into an AgentCraft-compatible HQ: the building shell plus the anchors (spawn, desks, monitors, stations) the mod needs to run agents inside it.
 
-ACHQ is a fork of [AgentCraft](https://github.com/blendi-remade/agentcraft), the MIT-licensed Fabric mod that runs Claude agents as NPCs in a walkable Minecraft studio. It is not the official project and is not affiliated with it. The first test case is a cliffside ocean office.
+ACHQ is a fork of [AgentCraft](https://github.com/blendi-remade/agentcraft), the MIT-licensed Fabric mod that runs Claude agents as NPCs in a walkable Minecraft studio. It is not the official project and is not affiliated with it. The first test case is a snowy mountain chalet with a view of a mountain range.
 
 ## Why
 
@@ -10,7 +10,7 @@ AgentCraft builds one fixed studio with `/agentcraft hq`. Where agents sit, walk
 
 ## What it will do
 
-- Take a text prompt (or a concept like "glass research station on a cliff") and produce a build.
+- Take a text prompt (or a concept like "snowy chalet facing a mountain range") and produce a build.
 - Emit the build as a `.schem` file that WorldEdit or Litematica can paste.
 - Emit a matching `agentcraft-anchors.json` so the mod can load the layout without rebuilding.
 - Validate that every required anchor exists and is reachable before anything is pasted.

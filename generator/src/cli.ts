@@ -41,8 +41,9 @@ if (command === "validate" && rest[0]) {
   const { volume, layout } = buildOffice({ origin: parseOrigin(flag(rest, "origin")), name: flag(rest, "name") ?? "cliff-office" });
   mkdirSync(out, { recursive: true });
   writeFileSync(join(out, "office.schem"), volume.toSchem());
+  writeFileSync(join(out, "office.nbt"), volume.toStructure());
   writeFileSync(join(out, ANCHORS_FILE), serializeLayout(layout));
-  console.log(`wrote ${join(out, "office.schem")} and ${join(out, ANCHORS_FILE)}`);
+  console.log(`wrote office.schem, office.nbt and ${ANCHORS_FILE} to ${out}`);
   report(layout);
 } else {
   console.error(USAGE);

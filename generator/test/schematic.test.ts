@@ -24,6 +24,22 @@ describe("Volume.toSchem", () => {
     expect(Array.from(s.Blocks.Data)).toEqual([0, 1, 2, 0, 1, 0, 0, 0]);
   });
 
+  it("writes a vanilla structure with block-state properties split out of the palette name", () => {
+    const v = new Volume(2, 1, 1);
+    v.set(1, 0, 0, "minecraft:oak_stairs[facing=north,half=bottom]");
+
+    const s = simplify(parseUncompressed(gunzipSync(v.toStructure())));
+    expect(s.size).toEqual([2, 1, 1]);
+    expect(s.palette).toEqual([
+      { Name: "minecraft:air" },
+      { Name: "minecraft:oak_stairs", Properties: { facing: "north", half: "bottom" } },
+    ]);
+    expect(s.blocks).toEqual([
+      { pos: [0, 0, 0], state: 0 },
+      { pos: [1, 0, 0], state: 1 },
+    ]);
+  });
+
   it("rejects writes outside the volume", () => {
     expect(() => new Volume(1, 1, 1).set(1, 0, 0, "minecraft:stone")).toThrow(RangeError);
   });

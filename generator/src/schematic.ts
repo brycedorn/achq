@@ -1,5 +1,8 @@
 import { gzipSync } from "node:zlib";
-import { type NBT, writeUncompressed } from "prismarine-nbt";
+import { type Compound, type NBT, type String as NbtString, writeUncompressed } from "prismarine-nbt";
+
+const str = (value: string): NbtString => ({ type: "string", value });
+const intList = (value: number[]): Compound["value"][string] => ({ type: "list", value: { type: "int", value } });
 
 /** Conservative default: WorldEdit upgrades older data versions, but rejects newer ones. */
 export const DEFAULT_DATA_VERSION = 4325;
@@ -80,6 +83,53 @@ export class Volume {
     };
     return gzipSync(writeUncompressed(root, "big"));
   }
+
+  /** Vanilla structure template (`.nbt`), loadable with a structure block. Air is written so a load clears the area. */
+  toStructure(dataVersion = DEFAULT_DATA_VERSION): Buffer {
+    const palette = Array.from(this.palette.keys(), (state): Compound["value"] => {
+      const { name, properties } = parseState(state);
+      const entry: Compound["value"] = { Name: str(name) };
+      if (Object.keys(properties).length > 0) {
+        entry["Properties"] = {
+          type: "compound",
+          value: Object.fromEntries(Object.entries(properties).map(([k, v]) => [k, str(v)])),
+        };
+      }
+      return entry;
+    });
+
+    const blocks = Array.from(this.cells, (id, i): Compound["value"] => {
+      const x = i % this.width;
+      const z = Math.floor(i / this.width) % this.length;
+      const y = Math.floor(i / (this.width * this.length));
+      return { pos: intList([x, y, z]), state: { type: "int", value: id } };
+    });
+
+    const root: NBT = {
+      type: "compound",
+      name: "",
+      value: {
+        DataVersion: { type: "int", value: dataVersion },
+        size: intList([this.width, this.height, this.length]),
+        palette: { type: "list", value: { type: "compound", value: palette } },
+        blocks: { type: "list", value: { type: "compound", value: blocks } },
+      },
+    };
+    return gzipSync(writeUncompressed(root, "big"));
+  }
+}
+
+/** Split `minecraft:oak_stairs[facing=north,half=bottom]` into a name and its properties. */
+export function parseState(state: string): { name: string; properties: Record<string, string> } {
+  const open = state.indexOf("[");
+  if (open === -1) return { name: state, properties: {} };
+  const props = state.slice(open + 1, state.endsWith("]") ? -1 : undefined);
+  const properties: Record<string, string> = {};
+  for (const pair of props.split(",")) {
+    const [key, value] = pair.split("=");
+    if (key && value !== undefined) properties[key.trim()] = value.trim();
+  }
+  return { name: state.slice(0, open), properties };
 }
 
 export type Vec3 = readonly [number, number, number];
