@@ -62,15 +62,16 @@ Required names:
 ## Generator
 
 Commands (from `generator/`):
-- `npm run generate -- --origin x,y,z --out <dir> [--name <layout name>]` writes `office.schem` and `agentcraft-anchors.json`, then validates.
+- `npm run generate -- --design <name> [--version N] --origin x,y,z --out <dir>` renders `designs/<name>/v<N>.json` (latest when no version) to `office.schem`, `office.nbt` and `agentcraft-anchors.json`, then validates.
 - `npm run validate -- <agentcraft-anchors.json>` checks a layout file.
 
-Planned commands (not built; today `generate` renders the one built-in office):
+Planned commands (not built):
 - `design new <name> "<prompt>"` creates `designs/<name>/v1.json`.
 - `design revise <name> "<feedback>"` reads the latest version and writes the next one.
-- `generate --design <name> [--version N] --origin x,y,z --out <dir>` renders any saved version.
 
-Current output: a fixed 25 x 8 x 19 office. Stone-brick box, glass south wall, a door on the north wall, six desks with monitors, six shared stations, a task wall, a podium, an atrium, and a spawn. Fixtures are vanilla stand-ins (black concrete monitors, lecterns for stations) because the mod's own blocks are not placed yet.
+**Design file.** `src/design.ts` holds the zod schema. A design is a name, version, seed, size, a `shell` (materials, door, glass wall) and a list of **parts**, each with a unique `id` that a revision can target. Part types: `deskRow`, `station`, `seatedTable`, `lanternGrid`, `podium`, `taskWall`, `camera`, `spot`. Each part renders its blocks and its anchors (`src/render.ts`), and `seatedTable` and `deskRow` always emit seats that follow the seat contract. Parts apply in list order, which fixes palette and anchor order, so output is deterministic. Directions are names (`south`, ...), not yaw.
+
+Current design: `designs/test-office/v1.json`, a 25 x 8 x 19 office. Stone-brick box, glass south wall, a door on the north wall, six desks with chairs and monitors, four lectern stations, a six-seat meeting table, a six-seat lounge, lanterns, a task wall, a podium, an atrium, and a spawn. Monitors, lecterns and the podium are vanilla stand-ins because the mod's own blocks are not placed yet. Verified in game: paste origin, anchors on solid ground, seats, lighting.
 
 Schematic format: Sponge v3, gzipped NBT, block index `x + z*Width + y*Width*Length`, varint block data. Written by hand with `prismarine-nbt` because `prismarine-schematic` is unlikely to know Minecraft 26.3. `DataVersion` defaults to 4325 (about 1.21.5); WorldEdit upgrades older versions and rejects newer ones.
 
@@ -134,22 +135,22 @@ The anchor data is not an isolated config: the mod's Java reads it directly, so 
 
 ```
 generator/    TypeScript toolkit (Node 22, vitest, zod, prismarine-nbt)
-designs/      saved design versions, designs/<name>/v<N>.json (planned)
+designs/      saved design versions, designs/<name>/v<N>.json
 mod/          AgentCraft Fabric mod (Gradle, Java 25, MC 26.3), reference and test target
 docs/         SPEC.md (this file)
 ```
 
 ## Open questions
 
-- **Paste origin**: the generator assumes the schematic's min corner lands on `--origin`. Depends on how WorldEdit reads `Offset`. Untested.
-- **`DataVersion`**: 4325 is a guess; the real value for 26.3 is unknown.
+- **Paste origin**: for the vanilla `.nbt` with a structure block, the min corner lands where expected (verified). For `.schem` with WorldEdit it depends on how `Offset` is read. Untested.
+- **`DataVersion`**: 4325 is a guess, but a structure block loaded the `.nbt` with it. The real value for 26.3 is unknown.
 - **WorldEdit availability**: no confirmed build for Minecraft 26.3, which is why it is not a dependency. Until the mod loader exists, small builds use a vanilla structure block (the `.nbt` output), which has a size limit per load. I believe it is 48 blocks per axis; this is not verified.
 - **Mod loader**: a `/achq load <design> [version]` command that places a build from a file in chunks over many ticks, clears the previous version's bounds first, and installs the anchors file in the same step. Not built; the design of the file it reads is open.
 - **Mod blocks**: `mod/FEATURES.md` says the mod's own blocks carry a binding string (monitor = agent id, status lamp = `agent:<id>`, and so on) that the HQ builder sets, and `HqWorldDriver` drives their state. A generated office with vanilla stand-ins probably shows no live monitors or lamps. Whether anchors alone are enough for agent movement is untested.
-- **Seats**: per the same file, every `desk_*`, `lounge*` and `meeting*` anchor must be a bottom-half stairs block with a free floor cell beside it, or agents stand inside the chair. The current office has no chairs, so its desk anchors break this rule.
+- **Seats**: the generator now places a bottom-half stairs block at every `desk_*`, `lounge*` and `meeting*` anchor with a free cell on the right (tested). Whether the mod's agents sit and walk correctly is not yet confirmed in game with agents running.
 - **Reachability**: how to check a walkable path from spawn to every anchor. The mod's `GridPathfinder.java` is the reference.
 - **Hand edits**: whether to read hand-built changes back into the design, or keep the design file as the only source of truth. The second is the v1 rule.
-- **Design format**: how much of the building the JSON describes (named rooms and fixtures, or raw block regions), and how a revision targets one part of it.
+- **Design format**: decided as parts with ids (see Generator). Open: a raw `fill` part type for one-offs, and a terrain section for the chalet.
 - **Terrain size**: a mountain range in one schematic is a very large paste. WorldEdit has block-change limits, and the HQ world game rule is capped at 1,000,000 block modifications (`mod/DEV.md`). The paste may need to be split into tiles, or the terrain written another way.
 - **Claude-driven step**: how it feeds anchors in as constraints.
 

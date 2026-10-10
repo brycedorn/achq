@@ -1,11 +1,12 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ANCHORS_FILE, parseLayout, serializeLayout, validateLayout } from "./anchors.js";
-import { buildOffice } from "./office.js";
+import { loadDesign } from "./designs.js";
+import { renderDesign } from "./render.js";
 
 const USAGE = `usage:
   cli validate <agentcraft-anchors.json>
-  cli generate --origin <x,y,z> --out <dir> [--name <layout name>]`;
+  cli generate --design <name> [--version <n>] --origin <x,y,z> --out <dir>`;
 
 function flag(args: string[], name: string): string | undefined {
   const i = args.indexOf(`--${name}`);
@@ -37,8 +38,11 @@ if (command === "validate" && rest[0]) {
   report(parseLayout(JSON.parse(readFileSync(rest[0], "utf8"))));
 } else if (command === "generate") {
   const out = flag(rest, "out");
-  if (!out) throw new Error(USAGE);
-  const { volume, layout } = buildOffice({ origin: parseOrigin(flag(rest, "origin")), name: flag(rest, "name") ?? "cliff-office" });
+  const name = flag(rest, "design");
+  if (!out || !name) throw new Error(USAGE);
+  const version = flag(rest, "version");
+  const design = loadDesign(name, version === undefined ? undefined : Number(version));
+  const { volume, layout } = renderDesign(design, { origin: parseOrigin(flag(rest, "origin")) });
   mkdirSync(out, { recursive: true });
   writeFileSync(join(out, "office.schem"), volume.toSchem());
   writeFileSync(join(out, "office.nbt"), volume.toStructure());

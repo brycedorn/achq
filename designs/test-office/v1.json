@@ -1,0 +1,46 @@
+{
+  "name": "test-office",
+  "version": 1,
+  "seed": 0,
+  "size": [25, 8, 19],
+  "shell": {
+    "floor": "minecraft:spruce_planks",
+    "wall": "minecraft:stone_bricks",
+    "glass": "minecraft:glass",
+    "roof": "minecraft:smooth_stone",
+    "doorX": 12,
+    "glassSouth": true
+  },
+  "parts": [
+    {
+      "type": "deskRow", "id": "desks", "at": [2, 14], "spacing": 4,
+      "agents": ["marlow", "juniper", "kit", "wren", "rowan", "tove"],
+      "desk": "minecraft:spruce_slab", "monitor": "minecraft:black_concrete", "chair": "minecraft:dark_oak_stairs"
+    },
+    { "type": "station", "id": "library", "station": "library", "at": [3, 5], "block": "minecraft:lectern" },
+    { "type": "station", "id": "terminal", "station": "terminal", "at": [7, 5], "block": "minecraft:lectern" },
+    { "type": "station", "id": "testbench", "station": "testbench", "at": [11, 5], "block": "minecraft:lectern" },
+    { "type": "station", "id": "mergestation", "station": "mergestation", "at": [15, 5], "block": "minecraft:lectern" },
+    {
+      "type": "seatedTable", "id": "meeting", "station": "meeting",
+      "table": { "from": [4, 9], "to": [9, 9], "block": "minecraft:birch_slab" },
+      "chair": "minecraft:birch_stairs",
+      "seats": [[4, 8, "south"], [6, 8, "south"], [8, 8, "south"], [5, 10, "north"], [7, 10, "north"], [9, 10, "north"]]
+    },
+    {
+      "type": "seatedTable", "id": "lounge", "station": "lounge",
+      "table": { "from": [18, 9], "to": [20, 9], "block": "minecraft:birch_slab" },
+      "chair": "minecraft:crimson_stairs",
+      "seats": [[18, 8, "south"], [20, 8, "south"], [19, 10, "north"], [21, 10, "north"], [16, 9, "east"], [23, 9, "west"]]
+    },
+    {
+      "type": "lanternGrid", "id": "lights", "xs": [4, 10, 16, 22], "zs": [3, 9, 15], "y": 5,
+      "block": "minecraft:lantern[hanging=true]"
+    },
+    { "type": "spot", "id": "user", "anchor": "user", "at": [12, 7], "look": "south" },
+    { "type": "podium", "id": "podium", "at": [12, 9], "block": "minecraft:lectern" },
+    { "type": "spot", "id": "atrium", "anchor": "goal_atrium", "at": [12, 11], "look": "south" },
+    { "type": "taskWall", "id": "task-wall", "x": 0, "z": [7, 11], "y": [2, 4], "block": "minecraft:dark_oak_planks" },
+    { "type": "camera", "id": "overview", "name": "overview", "at": [23.5, 5.5, 1.5], "yaw": 150, "pitch": 35 }
+  ]
+}
