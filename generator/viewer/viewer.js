@@ -23,11 +23,15 @@ const COLORS = {
   smooth_quartz: "#ece8e0", quartz_block: "#ece8e0", quartz: "#ece8e0", white_concrete: "#e9ecec",
   spruce_fence: "#7a5a34", dark_oak_fence: "#42301a", oak_fence: "#b8945f", birch_fence: "#d7c98c",
   mossy_cobblestone: "#6e7f62", stone_brick: "#7a7a7a", cobbled_deepslate: "#4a4a4d", polished_andesite: "#8b8b8b",
+  "agentcraft:monitor": "#3b8fd0", "agentcraft:status_lamp": "#8fe3ff", "agentcraft:task_board": "#ece4cf",
+  "agentcraft:decision_podium": "#8a5a2b", "agentcraft:merge_station": "#6b4a2b", "agentcraft:console_terminal": "#3a3f48",
+  "agentcraft:memory_archive": "#6a4a2a", "agentcraft:memory_catalog": "#7a5634", "agentcraft:glow_panel": "#f4f1e6",
+  "agentcraft:walnut_panel": "#5b3a22", "agentcraft:walnut_trim": "#4a2e1a", "agentcraft:oak_parquet": "#b8945f",
   glass: "#bfe3ee", tinted_glass: "#3a3340", barrel: "#7a5a34", copper_block: "#c06a4e", cut_copper: "#c06a4e",
   iron_block: "#d8d8d8", gold_block: "#f6d03e", obsidian: "#15101f", netherrack: "#6b3030",
 };
 const GLASSY = /(^|_)(glass|glass_pane|ice)$|stained_glass|^water$/;
-const GLOWING = /^(lantern|soul_lantern|glowstone|sea_lantern|shroomlight|jack_o_lantern|torch|campfire)$/;
+const GLOWING = /^(lantern|soul_lantern|glowstone|sea_lantern|shroomlight|jack_o_lantern|torch|campfire|agentcraft:(monitor|status_lamp|glow_panel))$/;
 const FENCE = /_fence$/;
 
 function hashColor(name) {
@@ -53,7 +57,18 @@ function parseState(state) {
 }
 
 /** Boxes `[x0, y0, z0, x1, y1, z1]` in 0..1 for the shapes the generator places; anything else is a full cube. */
+/** A wall panel `depth` pixels thick at the back of its block; the front faces `facing` (the mod's `PanelBlock`). */
+function panel(facing, depth) {
+  const d = depth / 16;
+  return { north: [0, 0, 1 - d, 1, 1, 1], south: [0, 0, 0, 1, 1, d], east: [0, 0, 0, d, 1, 1], west: [1 - d, 0, 0, 1, 1, 1] }[facing] ?? [0, 0, 1 - d, 1, 1, 1];
+}
+
 function boxesFor(name, props, neighbour) {
+  // AgentCraft blocks, with the shapes from mod/src/main/java/dev/agentcraft/block.
+  if (name === "agentcraft:monitor") return [panel(props.facing, 5)];
+  if (name === "agentcraft:task_board") return [panel(props.facing, 3)];
+  if (name === "agentcraft:decision_podium") return [[0.125, 0, 0.125, 0.875, 0.125, 0.875], [0.25, 0.125, 0.25, 0.75, 0.6875, 0.75], [0.03, 0.6875, 0.06, 0.97, 0.94, 1]];
+  if (name === "agentcraft:console_terminal") return [[0, 0, 0, 1, 0.5625, 1], [0.0625, 0.5625, 0.53, 0.9375, 1, 0.84]];
   if (FENCE.test(name)) {
     // A post, with two rails towards every neighbouring fence.
     const out = [[0.375, 0, 0.375, 0.625, 1, 0.625]];
@@ -201,7 +216,9 @@ function roofOff() {
   return data.roofCut ?? data.size[1] - 1;
 }
 
-const STANDING = /^(desk_|lounge|meeting|library|terminal|testbench|mergestation|user|entrance|spawn|goal_atrium)/;
+/** Places an agent stands, as the mod's `HqCheck.isSpot` defines them (spawn is the player's, shown the same way). */
+const NOT_SPOTS = new Set(["task_wall", "decision_podium", "goal_atrium"]);
+const STANDING = { test: (name) => !name.startsWith("cam_") && !name.startsWith("monitor_") && !name.startsWith("seat_") && !NOT_SPOTS.has(name) };
 function kindColor(name) {
   if (name.startsWith("cam_")) return 0xc792ea;
   return STANDING.test(name) ? 0x4da3ff : 0xffb454;
@@ -268,7 +285,7 @@ function addWalkable() {
 
 // ---------- camera presets ----------
 
-const VIEWS = { iso: "Iso", top: "Plan", south: "S", north: "N", east: "E", west: "W" };
+const VIEWS = { iso: "Iso", building: "Building", top: "Plan", south: "S", north: "N", east: "E", west: "W" };
 
 /** Look through a camera anchor: its position, yaw and pitch, with room to look around from there. */
 function setCameraView(name) {
@@ -289,8 +306,30 @@ function setCameraView(name) {
   saveState();
 }
 
+/** An angled view framing where the agents are: every anchor except cameras. In a big world this is the building. */
+function setBuildingView() {
+  state.view = "building";
+  const spots = Object.entries(data.anchors).filter(([n]) => !n.startsWith("cam_")).map(([, a]) => a);
+  const lo = new THREE.Vector3(Math.min(...spots.map((a) => a.x)), Math.min(...spots.map((a) => a.y)), Math.min(...spots.map((a) => a.z)));
+  const hi = new THREE.Vector3(Math.max(...spots.map((a) => a.x)), Math.max(...spots.map((a) => a.y)), Math.max(...spots.map((a) => a.z)));
+  const c = lo.clone().add(hi).multiplyScalar(0.5);
+  const span = Math.max(hi.x - lo.x, hi.z - lo.z, 8);
+  camera.up.set(0, 1, 0);
+  camera.fov = 40;
+  camera.position.copy(c).add(new THREE.Vector3(0.45, 0.8, 0.75).normalize().multiplyScalar(span * 1.9));
+  camera.updateProjectionMatrix();
+  controls?.dispose();
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.target.copy(c);
+  controls.enableDamping = false;
+  controls.update();
+  syncUi();
+  saveState();
+}
+
 function setView(name, keepControls = false) {
   if (name.startsWith("cam_") && data.anchors[name]) return setCameraView(name);
+  if (name === "building") return setBuildingView();
   state.view = name;
   const [w, h, l] = data.size;
   const c = new THREE.Vector3(w / 2, h / 3, l / 2);

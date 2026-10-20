@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { loadDesign } from "../src/designs.js";
-import { setupCommands } from "../src/setup.js";
+import { gunzipSync } from "node:zlib";
+import { parse, simplify } from "prismarine-nbt";
+import { renderDesign } from "../src/render.js";
+import { hqBox, setupCommands } from "../src/setup.js";
 
 describe("setupCommands", () => {
   it("loads the area, places the structure and lets the area unload, for a small design", () => {
@@ -40,3 +43,35 @@ describe("setupCommands", () => {
     expect(commands.some((c) => c.startsWith("/fillbiome") || c.startsWith("/weather") || c.startsWith("/time"))).toBe(false);
   });
 });
+
+describe("hqBox", () => {
+  const chalet = loadDesign("snowy-chalet", 7);
+  const origin = [40, 64, 40] as const;
+  const { volume, layout } = renderDesign(chalet, { origin });
+  const box = hqBox(layout, origin, chalet.size)!;
+
+  it("covers the chalet with its deck, foundation and roof, and little else", () => {
+    const [x0, y0, z0, x1, y1, z1] = box;
+    // Chalet walls x 123..137, z 100..120; deck to x 140, z 128; foundation from y 69; ridge near y 86.
+    expect(x0).toBeLessThanOrEqual(120);
+    expect(x1).toBeGreaterThanOrEqual(140);
+    expect(z0).toBeLessThanOrEqual(100);
+    expect(z1).toBeGreaterThanOrEqual(128);
+    expect(y0).toBeLessThanOrEqual(69);
+    expect(y1).toBeGreaterThanOrEqual(86);
+    expect((x1 - x0 + 1) * (z1 - z0 + 1)).toBeLessThan(2500); // a building, not the valley
+  });
+
+  it("keeps the air inside the box when air is otherwise left out, and only there", async () => {
+    const { parsed } = await parse(gunzipSync(volume.toStructure(undefined, undefined, box)));
+    const tree = simplify(parsed) as { palette: { Name: string }[]; blocks: { pos: number[]; state: number }[] };
+    const air = tree.blocks.filter((b) => tree.palette[b.state]!.Name === "minecraft:air");
+    expect(air.length).toBeGreaterThan(1000);
+    const [x0, y0, z0, x1, y1, z1] = box;
+    for (const b of air) {
+      const [x, y, z] = b.pos as [number, number, number];
+      expect(x >= x0 && x <= x1 && y >= y0 && y <= y1 && z >= z0 && z <= z1).toBe(true);
+    }
+  });
+});
+

@@ -18,6 +18,8 @@ export class Volume {
   /** States by palette id, so lookups by id are direct. */
   private readonly states: string[] = [AIR];
   private readonly cells: Uint16Array;
+  /** Block entity fields (such as a station's `binding`) by cell index. Written into the files with the block. */
+  private readonly data = new Map<number, Record<string, string>>();
 
   constructor(
     readonly width: number,
@@ -41,7 +43,27 @@ export class Volume {
       this.palette.set(state, id);
       this.states.push(state);
     }
-    this.cells[this.index(x, y, z)] = id;
+    const i = this.index(x, y, z);
+    this.cells[i] = id;
+    this.data.delete(i); // a new block starts without the old block's entity data
+  }
+
+  /** Replace the state of a block but keep its block entity data, such as when fixing panel connections. */
+  replaceState(x: number, y: number, z: number, state: string): void {
+    const i = this.index(x, y, z);
+    const data = this.data.get(i);
+    this.set(x, y, z, state);
+    if (data) this.data.set(i, data);
+  }
+
+  /** Set block entity fields on the block at (x, y, z), such as `{ id: "agentcraft:monitor", binding: "kit" }`. */
+  setData(x: number, y: number, z: number, fields: Record<string, string>): void {
+    this.data.set(this.index(x, y, z), fields);
+  }
+
+  /** Block entity fields of the block at (x, y, z), if any. */
+  dataAt(x: number, y: number, z: number): Record<string, string> | undefined {
+    return this.data.get(this.index(x, y, z));
   }
 
   get(x: number, y: number, z: number): string {
@@ -108,6 +130,7 @@ export class Volume {
               value: {
                 Palette: { type: "compound", value: palette },
                 Data: { type: "byteArray", value: data },
+                ...(this.data.size > 0 ? { BlockEntities: this.schemBlockEntities() } : {}),
               },
             },
           },
@@ -115,6 +138,22 @@ export class Volume {
       },
     };
     return gzipSync(writeUncompressed(root, "big"));
+  }
+
+  /** Sponge v3 block entities: position, id and the entity's fields. */
+  private schemBlockEntities(): Compound["value"][string] {
+    const entries = Array.from(this.data, ([i, fields]): Compound["value"] => {
+      const x = i % this.width;
+      const z = Math.floor(i / this.width) % this.length;
+      const y = Math.floor(i / (this.width * this.length));
+      const { id, ...rest } = fields;
+      return {
+        Pos: { type: "intArray", value: [x, y, z] },
+        Id: str(id ?? parseState(this.states[this.cells[i]!]!).name),
+        Data: { type: "compound", value: Object.fromEntries(Object.entries(rest).map(([k, v]) => [k, str(v)])) },
+      };
+    });
+    return { type: "list", value: { type: "compound", value: entries } };
   }
 
   /**
@@ -125,8 +164,19 @@ export class Volume {
    * Written by hand into one buffer: a landscape has millions of blocks, and an object per block
    * would not fit in memory. The layout is the one `prismarine-nbt` produces for the same tree, which
    * the tests check, so small files are byte-for-byte what they were.
+   *
+   * `airBox` keeps the air inside one box even when air is otherwise left out: a re-placed building is
+   * then rewritten exactly (blocks the new version removed are cleared) while the landscape stays cheap.
    */
-  toStructure(dataVersion = DEFAULT_DATA_VERSION, includeAir = this.cells.length <= SMALL_VOLUME): Buffer {
+  toStructure(dataVersion = DEFAULT_DATA_VERSION, includeAir = this.cells.length <= SMALL_VOLUME, airBox?: Box): Buffer {
+    const keepAir = (i: number) => {
+      if (includeAir) return true;
+      if (!airBox) return false;
+      const x = i % this.width;
+      const z = Math.floor(i / this.width) % this.length;
+      const y = Math.floor(i / (this.width * this.length));
+      return x >= airBox[0] && y >= airBox[1] && z >= airBox[2] && x <= airBox[3] && y <= airBox[4] && z <= airBox[5];
+    };
     const head: Buffer[] = [];
     const u16 = (n: number) => Buffer.from([(n >> 8) & 255, n & 255]);
     const i32 = (n: number) => {
@@ -157,17 +207,26 @@ export class Volume {
 
     let count = 0;
     if (includeAir) count = this.cells.length;
-    else for (let i = 0; i < this.cells.length; i++) if (this.cells[i] !== 0) count++;
+    else for (let i = 0; i < this.cells.length; i++) if (this.cells[i] !== 0 || keepAir(i)) count++;
     head.push(tag(9, "blocks"), Buffer.from([10]), i32(count));
 
-    // Each block: a `pos` list of three ints, a `state` int, and the end of the compound (36 bytes).
+    // Block entity data goes in an `nbt` compound after the state, as vanilla writes it.
+    const nbt = new Map<number, Buffer>();
+    for (const [i, fields] of this.data) {
+      if (this.cells[i] === 0) continue;
+      nbt.set(i, Buffer.concat([tag(10, "nbt"), ...Object.entries(fields).map(([k, v]) => string(k, v)), Buffer.from([0])]));
+    }
+    let extra = 0;
+    for (const b of nbt.values()) extra += b.length;
+
+    // Each block: a `pos` list of three ints, a `state` int, any `nbt`, and the end of the compound (36 bytes without nbt).
     const POS = Buffer.concat([tag(9, "pos"), Buffer.from([3]), i32(3)]);
     const STATE = tag(3, "state");
-    const body = Buffer.allocUnsafe(count * (POS.length + 12 + STATE.length + 4 + 1));
+    const body = Buffer.allocUnsafe(count * (POS.length + 12 + STATE.length + 4 + 1) + extra);
     let at = 0;
     for (let i = 0; i < this.cells.length; i++) {
       const id = this.cells[i]!;
-      if (id === 0 && !includeAir) continue;
+      if (id === 0 && !keepAir(i)) continue;
       POS.copy(body, at);
       at += POS.length;
       body.writeInt32BE(i % this.width, at);
@@ -178,6 +237,11 @@ export class Volume {
       at += STATE.length;
       body.writeInt32BE(id, at);
       at += 4;
+      const entity = nbt.get(i);
+      if (entity) {
+        entity.copy(body, at);
+        at += entity.length;
+      }
       body[at++] = 0;
     }
     return gzipSync(Buffer.concat([...head, body.subarray(0, at), Buffer.from([0])]));
@@ -199,6 +263,8 @@ export function parseState(state: string): { name: string; properties: Record<st
 }
 
 export type Vec3 = readonly [number, number, number];
+/** An inclusive box of cells: `[x0, y0, z0, x1, y1, z1]`. */
+export type Box = readonly [number, number, number, number, number, number];
 
 /** Unsigned LEB128, as the Sponge schematic `Data` array requires. */
 export function varints(values: Iterable<number>): number[] {
