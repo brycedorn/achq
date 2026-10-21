@@ -2,6 +2,7 @@
   "name": "achq-generator",
   "version": "0.0.0",
   "private": true,
+  "engines": { "node": ">=22" },
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -11,6 +12,8 @@
     "preview": "tsx src/cli.ts preview",
     "play": "tsx src/cli.ts play",
     "world": "tsx src/cli.ts world",
+    "import": "tsx src/cli.ts import",
+    "restore": "tsx src/cli.ts restore",
     "generate": "tsx src/cli.ts generate"
   },
   "dependencies": {

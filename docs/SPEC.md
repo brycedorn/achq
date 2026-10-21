@@ -181,7 +181,7 @@ The anchor data is not an isolated config: the mod's Java reads it directly, so 
 generator/    TypeScript toolkit (Node 22, vitest, zod, prismarine-nbt); viewer/ is the browser preview page (three.js)
 designs/      saved design versions, designs/<name>/v<N>.json
 mod/          AgentCraft Fabric mod (Gradle, Java 25, MC 26.3), reference and test target
-docs/         SPEC.md (this file)
+docs/         SPEC.md (this file), agentcraft-integration.md (proposed AgentCraft entrypoint)
 ```
 
 ## Open questions

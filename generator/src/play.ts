@@ -2,19 +2,25 @@ import { spawn } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { type Layout } from "./anchors.js";
 import { type Design } from "./design.js";
+import { installWorld, restoreWorld } from "./install.js";
 import { writeOutputs } from "./output.js";
+import { HQ_LEVEL_NAME, writeWorld } from "./world.js";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const MOD_DIR = join(REPO, "mod");
+const SAVES_DIR = join(MOD_DIR, "run", "saves");
 /** The world the mod opens on start (`AutoWorld`) and treats as the HQ. */
-export const WORLD_DIR = join(MOD_DIR, "run", "saves", "AgentCraft HQ");
+export const WORLD_DIR = join(SAVES_DIR, HQ_LEVEL_NAME);
 const OUT_DIR = join(MOD_DIR, "run", "achq-test");
+const WORLDS_OUT = join(REPO, "out", "worlds");
 const LOG = join(MOD_DIR, "run", "achq-play.log");
 /** The mod's DevBridge: on by default in `gradlew runClient`, localhost only (`ClientEnv.DEV_PORT`). */
 const BRIDGE = "ws://127.0.0.1:7879";
 
 type Reply = Record<string, unknown>;
+type Say = (s: string) => void;
 
 /** A connection to the mod's DevBridge (`mod/src/client/java/dev/agentcraft/client/dev/DevBridge.java`). */
 class Bridge {
@@ -92,16 +98,39 @@ function logTail(lines = 12): string {
   }
 }
 
-/** Wait for the game to start and finish loading the HQ world, then return a connection to it. */
-async function waitForGame(timeoutMs: number, say: (s: string) => void, exited: () => number | undefined): Promise<Bridge> {
+/** Stop unless Minecraft is closed: world files must not change under a running game. */
+async function requireClosed(why: string): Promise<void> {
+  if (await Bridge.connect(1_500).then((b) => (b?.close(), b !== undefined))) {
+    throw new Error(`Minecraft is already running. Close it (quit to title, then close the window) and run this again: ${why}`);
+  }
+}
+
+/** Start Minecraft (`gradlew runClient`, upstream studio autobuild off), wait for the HQ world to load, and connect. */
+async function launch(say: Say): Promise<Bridge> {
+  say(`starting Minecraft (this can take a few minutes; log: ${LOG})...`);
+  const log = openSync(LOG, "a");
+  // By full path: with NoDefaultCurrentDirectoryInExePath set (as it can be), cmd does not run programs from the current folder.
+  // Through sh elsewhere: a fresh clone's gradlew may not be marked executable.
+  const [shell, args] =
+    process.platform === "win32" ? ["cmd.exe", ["/c", join(MOD_DIR, "gradlew.bat"), "runClient"]] : ["sh", [join(MOD_DIR, "gradlew"), "runClient"]];
+  const game = spawn(shell, args, {
+    cwd: MOD_DIR,
+    env: { ...process.env, AGENTCRAFT_HQ_AUTOBUILD: "0" },
+    detached: true,
+    windowsHide: true,
+    stdio: ["ignore", log, log],
+  });
+  let exitCode: number | undefined;
+  game.on("exit", (code) => (exitCode = code ?? -1));
+  game.unref(); // the game keeps running after this script ends
+
   const started = Date.now();
-  const deadline = started + timeoutMs;
+  const deadline = started + 20 * 60_000;
   let bridge: Bridge | undefined;
   let waited = 0;
   while (!bridge) {
-    if (Date.now() > deadline) throw new Error(`the game did not start in ${Math.round(timeoutMs / 60_000)} minutes; see ${LOG}`);
-    const code = exited();
-    if (code !== undefined) throw new Error(`the game stopped while starting (exit code ${code}). The end of ${LOG}:\n${logTail()}`);
+    if (Date.now() > deadline) throw new Error(`the game did not start in 20 minutes; see ${LOG}`);
+    if (exitCode !== undefined) throw new Error(`the game stopped while starting (exit code ${exitCode}). The end of ${LOG}:\n${logTail()}`);
     bridge = await Bridge.connect(2_000);
     if (!bridge) {
       if (++waited % 10 === 0) say(`  still starting (${Math.round((Date.now() - started) / 1000)} s)...`);
@@ -117,36 +146,48 @@ async function waitForGame(timeoutMs: number, say: (s: string) => void, exited: 
   }
 }
 
+/** Look through `cam_vista` (or the first camera) and save a screenshot; a miss is reported, not fatal. */
+async function screenshot(bridge: Bridge, layout: Layout, name: string, say: Say): Promise<void> {
+  const camera = "cam_vista" in layout.anchors ? "cam_vista" : Object.keys(layout.anchors).find((n) => n.startsWith("cam_"));
+  if (!camera) return;
+  say(`screenshot from ${camera} (keep the mouse still for a moment)...`);
+  try {
+    await bridge.request("dev.camera", { anchor: camera }, 30_000);
+    const shot = await bridge.request("dev.screenshot", { name: `${name}-${camera.slice(4)}`, waitChunks: true, chunkTimeoutMs: 180_000 }, 300_000);
+    say(`  saved ${String(shot["path"])}`);
+  } catch (e) {
+    // A missed screenshot (often the mouse moving the camera) is not worth stopping for.
+    say(`  no screenshot: ${e instanceof Error ? e.message : String(e)}`);
+  } finally {
+    await bridge.request("dev.release", { mode: "creative" }, 20_000).catch(() => undefined);
+  }
+}
+
 export type PlayOptions = {
   origin: readonly [number, number, number];
   /** Start the game (default) or only write and install the files. */
   launch: boolean;
-  /** Take a screenshot through `cam_vista` (or the first camera) when everything is placed. */
+  /** Take a screenshot through `cam_vista` (or the first camera) when everything is in place. */
   screenshot: boolean;
-  say: (s: string) => void;
+  say: Say;
 };
 
 /**
- * Everything it takes to try a design in game, in one go: write the files, copy them into the HQ
- * world, start Minecraft (`gradlew runClient`, upstream studio autobuild off), wait for the world,
- * run the setup commands through the mod's DevBridge, take a screenshot, and leave the game running
- * with the player at `spawn`. The game must be closed when this starts, because the anchors file is
- * only read when the world loads.
+ * Try a design in your HQ world, in one go: write the structure and anchors, copy them into the world,
+ * start Minecraft, place the build and apply its atmosphere through the mod's DevBridge, take a
+ * screenshot, and leave the game running with the player at `spawn`.
  */
 export async function play(design: Design, opts: PlayOptions): Promise<void> {
   const { say } = opts;
-
-  if (await Bridge.connect(1_500).then((b) => (b?.close(), b !== undefined))) {
-    throw new Error("Minecraft is already running. Close it (quit to title, then close the window) and run this again: the anchors file is only read when the world loads.");
-  }
+  await requireClosed("the anchors file is only read when the world loads.");
   if (!existsSync(WORLD_DIR)) {
     throw new Error(`no HQ world at ${WORLD_DIR}. Start the game once to create it (cd mod; gradlew.bat runClient), close it, and run this again.`);
   }
 
-  say(`1/5 writing '${design.name}' v${design.version} at ${opts.origin.join(",")}...`);
+  say(`writing '${design.name}' v${design.version} at ${opts.origin.join(",")}...`);
   const out = writeOutputs(design, opts.origin, OUT_DIR);
 
-  say("2/5 copying it into the HQ world...");
+  say("copying it into the HQ world...");
   const structures = join(WORLD_DIR, "generated", "minecraft", "structure");
   mkdirSync(structures, { recursive: true });
   copyFileSync(out.nbt, join(structures, `${design.name}.nbt`));
@@ -156,22 +197,8 @@ export async function play(design: Design, opts: PlayOptions): Promise<void> {
     return;
   }
 
-  say(`3/5 starting Minecraft (this can take a few minutes; log: ${LOG})...`);
-  const log = openSync(LOG, "a");
-  // By full path: with NoDefaultCurrentDirectoryInExePath set (as it can be), cmd does not run programs from the current folder.
-  const game = spawn("cmd.exe", ["/c", join(MOD_DIR, "gradlew.bat"), "runClient"], {
-    cwd: MOD_DIR,
-    env: { ...process.env, AGENTCRAFT_HQ_AUTOBUILD: "0" },
-    detached: true,
-    windowsHide: true,
-    stdio: ["ignore", log, log],
-  });
-  let exitCode: number | undefined;
-  game.on("exit", (code) => (exitCode = code ?? -1));
-  game.unref(); // the game keeps running after this script ends
-  const bridge = await waitForGame(20 * 60_000, say, () => exitCode);
-
-  say("4/5 placing the build and applying the atmosphere...");
+  const bridge = await launch(say);
+  say("placing the build and applying the atmosphere...");
   for (const cmd of out.setup) {
     const slow = /^\/(place|fillbiome)\b/.test(cmd);
     const started = Date.now();
@@ -183,25 +210,40 @@ export async function play(design: Design, opts: PlayOptions): Promise<void> {
     const status = unchanged ? "same  " : reply["success"] === false ? "FAILED" : "ok    ";
     say(`  ${status} ${cmd}  (${secs} s)${messages.length ? `  ${messages.join(" | ")}` : ""}`);
   }
-
-  if (opts.screenshot) {
-    const camera = "cam_vista" in out.layout.anchors ? "cam_vista" : Object.keys(out.layout.anchors).find((n) => n.startsWith("cam_"));
-    if (camera) {
-      say(`5/5 screenshot from ${camera} (keep the mouse still for a moment)...`);
-      try {
-        await bridge.request("dev.camera", { anchor: camera }, 30_000);
-        const shot = await bridge.request("dev.screenshot", { name: `${design.name}-v${design.version}-${camera.slice(4)}`, waitChunks: true, chunkTimeoutMs: 180_000 }, 300_000);
-        say(`  saved ${String(shot["path"])}`);
-      } catch (e) {
-        // The build is placed either way; a missed screenshot (often the mouse moving the camera) is not worth stopping for.
-        say(`  no screenshot: ${e instanceof Error ? e.message : String(e)}`);
-      } finally {
-        await bridge.request("dev.release", { mode: "creative" }, 20_000).catch(() => undefined);
-      }
-    }
-  }
+  if (opts.screenshot) await screenshot(bridge, out.layout, `${design.name}-v${design.version}`, say);
   const spawnAt = out.layout.anchors["spawn"];
   if (spawnAt) await bridge.request("dev.command", { cmd: `/tp @s ${spawnAt.x} ${spawnAt.y} ${spawnAt.z}` }, 30_000);
   bridge.close();
   say("done: the game is running with you at the chalet's spawn.");
+}
+
+/**
+ * Try a generated world save, the way an AgentCraft user would: write it, set your HQ world aside as
+ * `AgentCraft HQ (backup <time>)` (renamed, never deleted), put the generated one in its place, start
+ * the game and take a screenshot. `restoreWorld` puts your world back.
+ */
+export async function playSave(design: Design, opts: PlayOptions): Promise<void> {
+  const { say } = opts;
+  await requireClosed("the world folder is about to be swapped.");
+
+  say(`writing the world save for '${design.name}' v${design.version}...`);
+  const result = writeWorld(design, opts.origin, join(WORLDS_OUT, `${design.name}-v${design.version}`));
+  say(`  ${result.chunks} chunks in ${result.dir}`);
+
+  mkdirSync(SAVES_DIR, { recursive: true });
+  if (installWorld(result.dir, SAVES_DIR, say)) say("  (run 'play --restore' to put it back)");
+  if (!opts.launch) return;
+
+  const bridge = await launch(say);
+  const anchors = await bridge.request("dev.command", { cmd: "/agentcraft anchors" }, 30_000);
+  say(`  AgentCraft: ${((anchors["messages"] as string[] | undefined) ?? []).slice(0, 1).join("")}`);
+  if (opts.screenshot) await screenshot(bridge, result.layout, `${design.name}-v${design.version}-save`, say);
+  bridge.close();
+  say("done: the game is running in the generated world. Close it, then run 'play --restore' to get your world back.");
+}
+
+/** Put your own HQ world back after `playSave` (see `install.ts`): the game must be closed. */
+export async function restoreHq(say: Say): Promise<void> {
+  await requireClosed("the world folder is about to be swapped.");
+  restoreWorld(SAVES_DIR, say);
 }

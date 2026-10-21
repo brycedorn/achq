@@ -1,0 +1,17 @@
+{
+  "name": "achq",
+  "private": true,
+  "description": "Generate AgentCraft HQ worlds from design files.",
+  "license": "MIT",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "setup": "npm --prefix generator ci",
+    "import": "npm --prefix generator run --silent import --",
+    "restore": "npm --prefix generator run --silent restore --",
+    "play": "npm --prefix generator run --silent play --",
+    "world": "npm --prefix generator run --silent world --",
+    "check": "npm --prefix generator run --silent check --",
+    "preview": "npm --prefix generator run --silent preview --",
+    "test": "npm --prefix generator test"
+  }
+}
