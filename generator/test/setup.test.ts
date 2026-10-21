@@ -68,10 +68,12 @@ describe("hqBox", () => {
     const air = tree.blocks.filter((b) => tree.palette[b.state]!.Name === "minecraft:air");
     expect(air.length).toBeGreaterThan(1000);
     const [x0, y0, z0, x1, y1, z1] = box;
-    for (const b of air) {
+    // One assertion, not one per block: there are many thousands.
+    const outside = air.filter((b) => {
       const [x, y, z] = b.pos as [number, number, number];
-      expect(x >= x0 && x <= x1 && y >= y0 && y <= y1 && z >= z0 && z <= z1).toBe(true);
-    }
+      return !(x >= x0 && x <= x1 && y >= y0 && y <= y1 && z >= z0 && z <= z1);
+    });
+    expect(outside.length).toBe(0);
   });
 });
 
