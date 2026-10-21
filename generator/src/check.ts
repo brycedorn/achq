@@ -1,4 +1,4 @@
-import { SHARED_STATIONS, validateLayout } from "./anchors.js";
+import { CAST_IDS, SHARED_STATIONS, validateLayout } from "./anchors.js";
 import { type Design, YAW } from "./design.js";
 import { renderDesign } from "./render.js";
 import { Walk } from "./walk.js";
@@ -107,6 +107,10 @@ export function checkDesign(design: Design): DesignProblem[] {
       }
     });
   }
+
+  // Off-shift agents wait in the lounge, so it needs a slot for every agent in the cast (`mod/FEATURES.md`).
+  const lounge = spots.filter(([name]) => name === "lounge" || /^lounge_\d+$/.test(name)).length;
+  if (lounge > 0 && lounge < CAST_IDS.length) problem("lounge", `has ${lounge} slots; the lounge needs one per agent (${CAST_IDS.length})`);
 
   // The player arrives at `spawn`, so it must be somewhere to stand.
   const spawn = layout.anchors["spawn"];

@@ -74,6 +74,13 @@ describe("checkDesign", () => {
     expect(messages(variant(add({ ...wall, y: [1, 1] })))).not.toMatch(/cannot be reached/);
   });
 
+  it("reports a lounge with fewer slots than agents", () => {
+    const lounge = base.parts.find((p) => p.id === "lounge")!;
+    if (lounge.type !== "seatedTable") throw new Error("expected seatedTable");
+    const found = messages(variant(replace("lounge", { ...lounge, seats: lounge.seats.slice(0, 4) })));
+    expect(found).toMatch(/lounge: has 4 slots; the lounge needs one per agent \(6\)/);
+  });
+
   it("reports a standing spot inside a solid block", () => {
     const d = variant(
       add(

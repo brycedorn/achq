@@ -1,6 +1,7 @@
 import { type Layout } from "./anchors.js";
 import { type Design, type Direction, type Part, YAW } from "./design.js";
 import { parseState, Volume } from "./schematic.js";
+import { hqBox } from "./setup.js";
 import { boulders, type Ctx, type Ground, terrain, trees, village } from "./landscape.js";
 
 const AIR = "minecraft:air";
@@ -303,11 +304,12 @@ export function renderDesign(design: Design, { origin }: Placement): { volume: V
 
   connectPanels(v, panels.values());
 
-  const layout: Layout = {
-    layout: design.name,
-    revision: design.version,
-    bounds: { minX: ox, minY: oy, minZ: oz, maxX: ox + width - 1, maxY: oy + height - 1, maxZ: oz + length - 1 },
-    anchors,
-  };
+  // `bounds` is the walkable HQ region, as AgentCraft's builder contract asks: its pathfinder searches only
+  // there (padded by 2) with a budget of 12,000 cells, so a whole landscape would leave long routes unfound.
+  const layout: Layout = { layout: design.name, revision: design.version, anchors };
+  const hq = hqBox(layout, origin, design.size);
+  layout.bounds = hq
+    ? { minX: ox + hq[0], minY: oy + hq[1], minZ: oz + hq[2], maxX: ox + hq[3], maxY: oy + hq[4], maxZ: oz + hq[5] }
+    : { minX: ox, minY: oy, minZ: oz, maxX: ox + width - 1, maxY: oy + height - 1, maxZ: oz + length - 1 };
   return { volume: v, layout, conflicts };
 }

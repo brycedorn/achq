@@ -5,12 +5,15 @@ import { loadDesign } from "./designs.js";
 import { writeOutputs } from "./output.js";
 import { play } from "./play.js";
 import { startPreview } from "./preview.js";
+import { writeWorld } from "./world.js";
 
 const USAGE = `usage:
   cli validate <agentcraft-anchors.json>
   cli check --design <name> [--version <n>]
   cli preview --design <name> [--version <n>] [--port <n>]
   cli generate --design <name> [--version <n>] --origin <x,y,z> --out <dir>
+  cli world [--design <name>] [--version <n>] [--origin <x,y,z>] [--out <dir>]
+       (a ready-to-open AgentCraft HQ world save; defaults: snowy-chalet, latest, 0,64,0, ../out/worlds)
   cli play [--design <name>] [--version <n>] [--origin <x,y,z>] [--no-launch] [--no-shot]
        (defaults: snowy-chalet, latest version, origin 40,64,40)`;
 
@@ -81,6 +84,15 @@ if (command === "validate" && rest[0]) {
   report(files.layout);
   const lines = files.setup.map((c) => `  ${c}`).join("\n");
   console.log(`\nIn game, with the files copied into the world (also saved as ${design.name}.commands.txt):\n${lines}`);
+} else if (command === "world") {
+  const design = designFromFlags(rest, "snowy-chalet");
+  requireClean(design);
+  const out = flag(rest, "out") ?? `../out/worlds/${design.name}-v${design.version}`;
+  const started = Date.now();
+  const result = writeWorld(design, parseOrigin(flag(rest, "origin") ?? "0,64,0"), out);
+  console.log(`wrote the world save ${result.dir} (${result.chunks} chunks in ${result.regions} region files, ${((Date.now() - started) / 1000).toFixed(1)} s)`);
+  report(result.layout);
+  console.log("To use it: put the 'AgentCraft HQ' folder in place of the one in AgentCraft's saves folder (back yours up first).");
 } else if (command === "play") {
   const design = designFromFlags(rest, "snowy-chalet");
   requireClean(design);
