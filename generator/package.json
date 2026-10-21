@@ -9,6 +9,8 @@
     "validate": "tsx src/cli.ts validate",
     "check": "tsx src/cli.ts check",
     "preview": "tsx src/cli.ts preview",
+    "play": "tsx src/cli.ts play",
+    "world": "tsx src/cli.ts world",
     "generate": "tsx src/cli.ts generate"
   },
   "dependencies": {

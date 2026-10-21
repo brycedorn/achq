@@ -1,6 +1,7 @@
 import { type Layout } from "./anchors.js";
 import { type Design, type Direction, type Part, YAW } from "./design.js";
-import { Volume } from "./schematic.js";
+import { parseState, Volume } from "./schematic.js";
+import { hqBox } from "./setup.js";
 import { boulders, type Ctx, type Ground, terrain, trees, village } from "./landscape.js";
 
 const AIR = "minecraft:air";
@@ -15,6 +16,41 @@ export type Placement = { origin: readonly [number, number, number] };
 export type Conflict = { cell: readonly [number, number, number]; first: string; second: string };
 
 type Vec3 = readonly [number, number, number];
+
+/** Connectable wall panels: their `up`/`down`/`left`/`right` flags join neighbours into one screen. */
+const PANEL = /^agentcraft:(monitor|task_board)(\[|$)/;
+const CLOCKWISE: Record<string, string> = { north: "east", east: "south", south: "west", west: "north" };
+const STEP: Record<string, readonly [number, number]> = { north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0] };
+
+/**
+ * Set each panel's connection flags from its finished neighbours, as the mod's `PanelBlock.connect`
+ * does: a side connects when the neighbour there is the same block with the same facing, and `left` is
+ * the clockwise side of the facing. The mod draws a multi-block screen from its bottom-left block, so
+ * wrong flags break the screen. Block entity data (the binding) is kept.
+ */
+function connectPanels(v: Volume, cells: Iterable<readonly [number, number, number]>): void {
+  const inside = (x: number, y: number, z: number) => x >= 0 && x < v.width && y >= 0 && y < v.height && z >= 0 && z < v.length;
+  for (const [x, y, z] of cells) {
+    const state = v.get(x, y, z);
+    if (!PANEL.test(state)) continue; // overwritten by a later part
+    const { name, properties } = parseState(state);
+    const facing = properties["facing"] ?? "north";
+    const same = (nx: number, ny: number, nz: number) => {
+      if (!inside(nx, ny, nz)) return false;
+      const other = parseState(v.get(nx, ny, nz));
+      return other.name === name && (other.properties["facing"] ?? "north") === facing;
+    };
+    const [lx, lz] = STEP[CLOCKWISE[facing]!]!;
+    const props = {
+      ...properties,
+      up: String(same(x, y + 1, z)),
+      down: String(same(x, y - 1, z)),
+      left: String(same(x + lx, y, z + lz)),
+      right: String(same(x - lx, y, z - lz)),
+    };
+    v.replaceState(x, y, z, `${name}[${Object.entries(props).map(([k, val]) => `${k}=${val}`).join(",")}]`);
+  }
+}
 
 /**
  * Render a design into a block volume and its anchors file. Coordinates are local (x east, y up,
@@ -54,7 +90,11 @@ export function renderDesign(design: Design, { origin }: Placement): { volume: V
     if (owner !== undefined && owner !== current && !allowed.has(owner)) conflicts.push({ cell: [x, y, z], first: owner, second: current });
     claims.set(key, current);
     v.set(x, y, z, state);
+    if (PANEL.test(state)) panels.set(key, [x, y, z]);
   };
+  const panels = new Map<number, [number, number, number]>();
+  /** Store a binding on the block at (x, y, z) for the mod: its monitors, lamps and stations read it. */
+  const bind = (x: number, y: number, z: number, binding: string) => v.setData(x, y, z, { id: parseState(v.get(x, y, z)).name, binding });
   /** Whether a part (not the ground) has placed a block at this cell. */
   const claimed = (x: number, y: number, z: number) => x >= 0 && x < width && y >= 0 && y < height && z >= 0 && z < length && claims.has(x + width * (z + length * y));
   const fill = (a: Vec3, b: Vec3, state: string) => {
@@ -105,15 +145,36 @@ export function renderDesign(design: Design, { origin }: Placement): { volume: V
         const [x0, deskZ] = part.at;
         part.agents.forEach((agent, i) => {
           const x = x0 + part.spacing * i;
-          set(x, feet, deskZ, part.desk);
-          set(x, feet + 1, deskZ, part.monitor);
+          if (!part.screen) {
+            set(x, feet, deskZ, part.desk);
+            set(x, feet + 1, deskZ, part.monitor);
+            seat(`desk_${agent}`, x, deskZ - 1, "south", part.chair);
+            put(`monitor_${agent}`, x + 0.5, feet + 1.5, deskZ, YAW.north);
+            return;
+          }
+          // The studio's desk: a wall of screens bound to the agent on a desk as wide, its status lamp on top.
+          const { block, width: w, height: h } = part.screen;
+          const half = (w - 1) / 2;
+          for (let dx = -half; dx <= half; dx++) {
+            set(x + dx, feet, deskZ, part.desk);
+            for (let dy = 1; dy <= h; dy++) {
+              set(x + dx, feet + dy, deskZ, block);
+              bind(x + dx, feet + dy, deskZ, agent);
+            }
+          }
+          if (part.lamp) {
+            set(x, feet + h + 1, deskZ, part.lamp);
+            bind(x, feet + h + 1, deskZ, `agent:${agent}`);
+          }
           seat(`desk_${agent}`, x, deskZ - 1, "south", part.chair);
-          put(`monitor_${agent}`, x + 0.5, feet + 1.5, deskZ, YAW.north);
+          // The centre of the screen, just behind the front of a north-facing panel (the studio's offset, mirrored).
+          put(`monitor_${agent}`, x + 0.5, feet + 1 + h / 2, deskZ + 0.748, YAW.north);
         });
         break;
       }
       case "station":
         set(part.at[0], feet, part.at[1] + 1, part.block);
+        if (part.binding) bind(part.at[0], feet, part.at[1] + 1, part.binding);
         spot(part.station, part.at[0], part.at[1], "south");
         break;
       case "seatedTable":
@@ -125,6 +186,7 @@ export function renderDesign(design: Design, { origin }: Placement): { volume: V
         break;
       case "podium":
         set(part.at[0], feet, part.at[1], part.block);
+        if (part.binding) bind(part.at[0], feet, part.at[1], part.binding);
         put("decision_podium", part.at[0] + 0.5, feet + 1, part.at[1] + 0.5, YAW.north);
         break;
       case "taskWall": {
@@ -134,6 +196,10 @@ export function renderDesign(design: Design, { origin }: Placement): { volume: V
         put("task_wall", part.x + 1, (y0 + y1 + 1) / 2, (z0 + z1 + 1) / 2, YAW.east);
         break;
       }
+      case "device":
+        set(part.at[0], part.at[1], part.at[2], part.block);
+        if (part.binding) bind(part.at[0], part.at[1], part.at[2], part.binding);
+        break;
       case "camera":
         put(`cam_${part.name}`, part.at[0], part.at[1], part.at[2], part.yaw, part.pitch);
         break;
@@ -236,11 +302,14 @@ export function renderDesign(design: Design, { origin }: Placement): { volume: V
     render(part);
   }
 
-  const layout: Layout = {
-    layout: design.name,
-    revision: design.version,
-    bounds: { minX: ox, minY: oy, minZ: oz, maxX: ox + width - 1, maxY: oy + height - 1, maxZ: oz + length - 1 },
-    anchors,
-  };
+  connectPanels(v, panels.values());
+
+  // `bounds` is the walkable HQ region, as AgentCraft's builder contract asks: its pathfinder searches only
+  // there (padded by 2) with a budget of 12,000 cells, so a whole landscape would leave long routes unfound.
+  const layout: Layout = { layout: design.name, revision: design.version, anchors };
+  const hq = hqBox(layout, origin, design.size);
+  layout.bounds = hq
+    ? { minX: ox + hq[0], minY: oy + hq[1], minZ: oz + hq[2], maxX: ox + hq[3], maxY: oy + hq[4], maxZ: oz + hq[5] }
+    : { minX: ox, minY: oy, minZ: oz, maxX: ox + width - 1, maxY: oy + height - 1, maxZ: oz + length - 1 };
   return { volume: v, layout, conflicts };
 }

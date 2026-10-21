@@ -1,4 +1,6 @@
+import { type Layout } from "./anchors.js";
 import { type Design } from "./design.js";
+import { type Box } from "./schematic.js";
 
 /** A force-load covers at most 256 chunks per command, so large areas are split into 16 x 16 chunk tiles. */
 const TILE_CHUNKS = 16;
@@ -39,4 +41,30 @@ export function setupCommands(design: Design, origin: Origin, template = `minecr
 
   out.push("/forceload remove all");
   return out;
+}
+
+/** How far round the agents' anchors the HQ reaches: walls, deck and eaves sideways, foundation below, roof above. */
+const HQ_MARGIN = { side: 12, below: 4, above: 16 };
+
+/**
+ * The HQ's own box in local coordinates: everything near where agents stand (all anchors except
+ * cameras), with room for the walls, deck, foundation and roof. Large structures keep their air here
+ * so re-placing a new version rewrites the building exactly, while the landscape round it stays sparse.
+ */
+export function hqBox(layout: Layout, origin: Origin, size: readonly [number, number, number]): Box | undefined {
+  const spots = Object.entries(layout.anchors).filter(([n]) => !n.startsWith("cam_")).map(([, a]) => a);
+  if (spots.length === 0) return undefined;
+  const [ox, oy, oz] = origin;
+  const clamp = (v: number, max: number) => Math.min(Math.max(Math.floor(v), 0), max - 1);
+  const xs = spots.map((a) => a.x - ox);
+  const ys = spots.map((a) => a.y - oy);
+  const zs = spots.map((a) => a.z - oz);
+  return [
+    clamp(Math.min(...xs) - HQ_MARGIN.side, size[0]),
+    clamp(Math.min(...ys) - HQ_MARGIN.below, size[1]),
+    clamp(Math.min(...zs) - HQ_MARGIN.side, size[2]),
+    clamp(Math.max(...xs) + HQ_MARGIN.side, size[0]),
+    clamp(Math.max(...ys) + HQ_MARGIN.above, size[1]),
+    clamp(Math.max(...zs) + HQ_MARGIN.side, size[2]),
+  ];
 }

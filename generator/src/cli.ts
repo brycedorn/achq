@@ -1,17 +1,21 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { ANCHORS_FILE, parseLayout, serializeLayout, validateLayout } from "./anchors.js";
+import { readFileSync } from "node:fs";
+import { parseLayout, validateLayout } from "./anchors.js";
 import { checkDesign } from "./check.js";
 import { loadDesign } from "./designs.js";
+import { writeOutputs } from "./output.js";
+import { play } from "./play.js";
 import { startPreview } from "./preview.js";
-import { renderDesign } from "./render.js";
-import { setupCommands } from "./setup.js";
+import { writeWorld } from "./world.js";
 
 const USAGE = `usage:
   cli validate <agentcraft-anchors.json>
   cli check --design <name> [--version <n>]
   cli preview --design <name> [--version <n>] [--port <n>]
-  cli generate --design <name> [--version <n>] --origin <x,y,z> --out <dir>`;
+  cli generate --design <name> [--version <n>] --origin <x,y,z> --out <dir>
+  cli world [--design <name>] [--version <n>] [--origin <x,y,z>] [--out <dir>]
+       (a ready-to-open AgentCraft HQ world save; defaults: snowy-chalet, latest, 0,64,0, ../out/worlds)
+  cli play [--design <name>] [--version <n>] [--origin <x,y,z>] [--no-launch] [--no-shot]
+       (defaults: snowy-chalet, latest version, origin 40,64,40)`;
 
 function flag(args: string[], name: string): string | undefined {
   const i = args.indexOf(`--${name}`);
@@ -46,15 +50,12 @@ function requireClean(design: ReturnType<typeof loadDesign>): void {
   process.exit(1);
 }
 
-function designFromFlags(args: string[]): ReturnType<typeof loadDesign> {
-  const name = flag(args, "design");
+function designFromFlags(args: string[], fallback?: string): ReturnType<typeof loadDesign> {
+  const name = flag(args, "design") ?? fallback;
   if (!name) throw new Error(USAGE);
   const version = flag(args, "version");
   return loadDesign(name, version === undefined ? undefined : Number(version));
 }
-
-/** Volumes above this many cells get no `.schem`. */
-const SCHEM_LIMIT = 4_000_000;
 
 const [command, ...rest] = process.argv.slice(2);
 
@@ -77,20 +78,35 @@ if (command === "validate" && rest[0]) {
   if (!out) throw new Error(USAGE);
   const design = designFromFlags(rest);
   requireClean(design);
-  const { volume, layout } = renderDesign(design, { origin: parseOrigin(flag(rest, "origin")) });
-  mkdirSync(out, { recursive: true });
-  // The Sponge schematic holds every cell and is built from a JavaScript array, so it is only written for volumes that fit.
-  const schem = volume.width * volume.height * volume.length <= SCHEM_LIMIT;
-  if (schem) writeFileSync(join(out, `${design.name}.schem`), volume.toSchem());
-  writeFileSync(join(out, `${design.name}.nbt`), volume.toStructure());
-  writeFileSync(join(out, ANCHORS_FILE), serializeLayout(layout));
-  console.log(`wrote ${schem ? `${design.name}.schem, ` : ""}${design.name}.nbt and ${ANCHORS_FILE} to ${out}${schem ? "" : " (no .schem: volume too large)"}`);
-  report(layout);
-  const origin = parseOrigin(flag(rest, "origin"));
-  const commands = setupCommands(design, origin);
-  writeFileSync(join(out, `${design.name}.commands.txt`), commands.join("\n") + "\n");
-  const lines = commands.map((c) => `  ${c}`).join("\n");
+  const files = writeOutputs(design, parseOrigin(flag(rest, "origin")), out);
+  const written = [files.schem, files.nbt, files.anchors, files.commands].filter((f) => f !== undefined).map((f) => f.split(/[\\/]/).pop());
+  console.log(`wrote ${written.join(", ")} to ${out}${files.schem ? "" : " (no .schem: volume too large)"}`);
+  report(files.layout);
+  const lines = files.setup.map((c) => `  ${c}`).join("\n");
   console.log(`\nIn game, with the files copied into the world (also saved as ${design.name}.commands.txt):\n${lines}`);
+} else if (command === "world") {
+  const design = designFromFlags(rest, "snowy-chalet");
+  requireClean(design);
+  const out = flag(rest, "out") ?? `../out/worlds/${design.name}-v${design.version}`;
+  const started = Date.now();
+  const result = writeWorld(design, parseOrigin(flag(rest, "origin") ?? "0,64,0"), out);
+  console.log(`wrote the world save ${result.dir} (${result.chunks} chunks in ${result.regions} region files, ${((Date.now() - started) / 1000).toFixed(1)} s)`);
+  report(result.layout);
+  console.log("To use it: put the 'AgentCraft HQ' folder in place of the one in AgentCraft's saves folder (back yours up first).");
+} else if (command === "play") {
+  const design = designFromFlags(rest, "snowy-chalet");
+  requireClean(design);
+  try {
+    await play(design, {
+      origin: parseOrigin(flag(rest, "origin") ?? "40,64,40"),
+      launch: !rest.includes("--no-launch"),
+      screenshot: !rest.includes("--no-shot"),
+      say: (s) => console.log(s),
+    });
+  } catch (e) {
+    console.error(e instanceof Error ? e.message : String(e));
+    process.exit(1);
+  }
 } else {
   console.error(USAGE);
   process.exit(2);

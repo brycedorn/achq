@@ -23,7 +23,13 @@ const common = { id: z.string().min(1), over: z.array(z.string()).default([]) };
 /** A bare agent spot, such as `user` or `goal_atrium`: where the feet stand and which way they face. */
 const spotPart = z.object({ ...common, type: z.literal("spot"), anchor: z.string(), at: cell, look: direction });
 
-/** One desk per agent along +X: desk slab and monitor at `at`, chair one cell north of the desk, facing it. */
+/**
+ * One desk per agent along +X: desk slab and monitor at `at`, chair one cell north of the desk, facing it.
+ * With `screen`, the monitor is instead a `width` x `height` wall of that block (an AgentCraft
+ * `agentcraft:monitor` facing north) on a desk as wide, every block bound to the agent's id, and `lamp`
+ * (an `agentcraft:status_lamp`) sits on top, bound to `agent:<id>`: the mod then shows each agent's log
+ * and state there.
+ */
 const deskRowPart = z.object({
   ...common,
   type: z.literal("deskRow"),
@@ -33,10 +39,18 @@ const deskRowPart = z.object({
   desk: block,
   monitor: block,
   chair: block,
+  screen: z
+    .object({ block, width: z.number().int().positive().refine((n) => n % 2 === 1, "width must be odd, so the screen centres on the desk"), height: z.number().int().positive() })
+    .optional(),
+  lamp: block.optional(),
 });
 
-/** A lectern station: the agent stands at `at`, the lectern is one cell south. */
-const stationPart = z.object({ ...common, type: z.literal("station"), station: z.string(), at: cell, block });
+/**
+ * A station: the agent stands at `at`, the block (a lectern, or an AgentCraft console terminal, memory
+ * archive or merge station facing north) is one cell south. `binding` is stored on the block for the mod,
+ * such as `shared` on a memory archive.
+ */
+const stationPart = z.object({ ...common, type: z.literal("station"), station: z.string(), at: cell, block, binding: z.string().optional() });
 
 /** A table with numbered seats. Slot 1 is `<station>`, slot n is `<station>_n`, in list order. */
 const seatedTablePart = z.object({
@@ -58,7 +72,13 @@ const lanternGridPart = z.object({
   block,
 });
 
-const podiumPart = z.object({ ...common, type: z.literal("podium"), at: cell, block });
+const podiumPart = z.object({ ...common, type: z.literal("podium"), at: cell, block, binding: z.string().optional() });
+
+/**
+ * A single block, usually an AgentCraft status lamp, with an optional `binding` the mod reads: `merge`,
+ * `decisions`, `goal`, `goal:atrium`, `beacon`, `ci:#1`, `agent:<id>` (see `mod/FEATURES.md`).
+ */
+const devicePart = z.object({ ...common, type: z.literal("device"), at: cell3, block, binding: z.string().optional() });
 
 /** A board on a west-side wall: `z` and `y` are inclusive ranges, and the anchor faces east. */
 const taskWallPart = z.object({ ...common, type: z.literal("taskWall"), x: int, z: cell, y: cell, block });
@@ -306,6 +326,7 @@ export const partSchema = z.discriminatedUnion("type", [
   seatedTablePart,
   lanternGridPart,
   podiumPart,
+  devicePart,
   taskWallPart,
   cameraPart,
   boxPart,
