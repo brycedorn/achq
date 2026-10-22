@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, renameSync, statSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { HQ_LEVEL_NAME } from "./world.js";
@@ -22,6 +22,22 @@ export function launcherSaves(): string {
   return join(homedir(), ".minecraft", "saves");
 }
 
+/** Whether a world was written by ACHQ (its AgentCraft marker says so), rather than being someone's own. */
+function generated(world: string): boolean {
+  try {
+    return JSON.parse(readFileSync(join(world, "agentcraft-world.json"), "utf8")).createdBy === "achq";
+  } catch {
+    return false;
+  }
+}
+
+/** A folder name in `dir` like `<base> (<label> <time>)`, numbered when that one is taken. */
+function freeName(dir: string, base: string, label: string): string {
+  const name = `${base} (${label} ${stamp()})`;
+  if (!existsSync(join(dir, name))) return name;
+  for (let n = 2; ; n++) if (!existsSync(join(dir, `${name.slice(0, -1)} ${n})`))) return `${name.slice(0, -1)} ${n})`;
+}
+
 /** Rename, explaining the usual cause when it fails: the game has the world open. */
 function move(from: string, to: string): void {
   try {
@@ -35,8 +51,9 @@ function move(from: string, to: string): void {
 
 /**
  * Install a generated world save as the HQ world in a `saves` folder: an existing `AgentCraft HQ` is
- * first renamed to `AgentCraft HQ (backup <time>)` (never deleted), then the save is copied in.
- * Returns the backup's name, if one was made.
+ * first renamed to `AgentCraft HQ (backup <time>)` (never deleted), then the save is copied in. A world
+ * ACHQ generated is set aside as `AgentCraft HQ (achq <time>)` instead, so `restoreWorld` skips it and
+ * always brings back the world that was someone's own. Returns the backup's name, if one was made.
  */
 export function installWorld(save: string, savesDir: string, say: Say): string | undefined {
   if (!existsSync(join(save, "level.dat"))) throw new Error(`'${save}' is not a world save (no level.dat). Write one with 'npm run world' first.`);
@@ -49,9 +66,15 @@ export function installWorld(save: string, savesDir: string, say: Say): string |
   const target = join(savesDir, HQ_LEVEL_NAME);
   let backup: string | undefined;
   if (existsSync(target)) {
-    backup = `${BACKUP_PREFIX}${stamp()})`;
-    move(target, join(savesDir, backup));
-    say(`set the existing HQ world aside as '${backup}'`);
+    if (generated(target)) {
+      const kept = freeName(savesDir, HQ_LEVEL_NAME, "achq");
+      move(target, join(savesDir, kept));
+      say(`set the generated HQ world there aside as '${kept}'`);
+    } else {
+      backup = freeName(savesDir, HQ_LEVEL_NAME, "backup");
+      move(target, join(savesDir, backup));
+      say(`set the existing HQ world aside as '${backup}'`);
+    }
   }
   cpSync(save, target, { recursive: true });
   say(`installed '${resolve(save)}' as '${target}'`);
@@ -70,7 +93,7 @@ export function restoreWorld(savesDir: string, say: Say): void {
   if (!newest) throw new Error(`no backup to restore: no '${BACKUP_PREFIX}...)' folder in '${savesDir}'`);
   const target = join(savesDir, HQ_LEVEL_NAME);
   if (existsSync(target)) {
-    const kept = `${HQ_LEVEL_NAME} (achq ${stamp()})`;
+    const kept = freeName(savesDir, HQ_LEVEL_NAME, "achq");
     move(target, join(savesDir, kept));
     say(`kept the installed world as '${kept}'`);
   }

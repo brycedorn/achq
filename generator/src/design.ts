@@ -19,12 +19,16 @@ const seat = z.tuple([int, int, direction]);
  * chimney passing through a roof. Overwriting any other part's blocks is a design problem.
  */
 const common = { id: z.string().min(1), over: z.array(z.string()).default([]) };
+/** The layer of the floor this part stands on, when it is not the design's `floorY` (an upper deck, a mezzanine). */
+const floor = { floor: int.optional() };
 
 /** A bare agent spot, such as `user` or `goal_atrium`: where the feet stand and which way they face. */
-const spotPart = z.object({ ...common, type: z.literal("spot"), anchor: z.string(), at: cell, look: direction });
+const spotPart = z.object({ ...common, ...floor, type: z.literal("spot"), anchor: z.string(), at: cell, look: direction });
 
 /**
- * One desk per agent along +X: desk slab and monitor at `at`, chair one cell north of the desk, facing it.
+ * One desk per agent: desk slab and monitor at `at`, the chair one cell behind it, the agent looking `look`
+ * (south by default) at the monitor. Desks run along +X when looking south or north, along +Z when looking
+ * east or west.
  * With `screen`, the monitor is instead a `width` x `height` wall of that block (an AgentCraft
  * `agentcraft:monitor` facing north) on a desk as wide, every block bound to the agent's id, and `lamp`
  * (an `agentcraft:status_lamp`) sits on top, bound to `agent:<id>`: the mod then shows each agent's log
@@ -43,6 +47,8 @@ const deskRowPart = z.object({
     .object({ block, width: z.number().int().positive().refine((n) => n % 2 === 1, "width must be odd, so the screen centres on the desk"), height: z.number().int().positive() })
     .optional(),
   lamp: block.optional(),
+  look: direction.default("south"),
+  ...floor,
 });
 
 /**
@@ -50,11 +56,12 @@ const deskRowPart = z.object({
  * archive or merge station facing north) is one cell south. `binding` is stored on the block for the mod,
  * such as `shared` on a memory archive.
  */
-const stationPart = z.object({ ...common, type: z.literal("station"), station: z.string(), at: cell, block, binding: z.string().optional() });
+const stationPart = z.object({ ...common, ...floor, type: z.literal("station"), station: z.string(), at: cell, block, binding: z.string().optional(), look: direction.default("south") });
 
 /** A table with numbered seats. Slot 1 is `<station>`, slot n is `<station>_n`, in list order. */
 const seatedTablePart = z.object({
   ...common,
+  ...floor,
   type: z.literal("seatedTable"),
   station: z.string(),
   table: z.object({ from: cell, to: cell, block }),
@@ -72,7 +79,7 @@ const lanternGridPart = z.object({
   block,
 });
 
-const podiumPart = z.object({ ...common, type: z.literal("podium"), at: cell, block, binding: z.string().optional() });
+const podiumPart = z.object({ ...common, ...floor, type: z.literal("podium"), at: cell, block, binding: z.string().optional() });
 
 /**
  * A single block, usually an AgentCraft status lamp, with an optional `binding` the mod reads: `merge`,
@@ -80,8 +87,12 @@ const podiumPart = z.object({ ...common, type: z.literal("podium"), at: cell, bl
  */
 const devicePart = z.object({ ...common, type: z.literal("device"), at: cell3, block, binding: z.string().optional() });
 
-/** A board on a west-side wall: `z` and `y` are inclusive ranges, and the anchor faces east. */
-const taskWallPart = z.object({ ...common, type: z.literal("taskWall"), x: int, z: cell, y: cell, block });
+/**
+ * A board on a wall, facing `facing` (east by default, a board on a west-side wall). Facing east or west it
+ * takes the wall's `x` and a `z` range; facing north or south, the wall's `z` and an `x` range. `y` is an
+ * inclusive range.
+ */
+const taskWallPart = z.object({ ...common, type: z.literal("taskWall"), x: z.union([int, cell]), z: z.union([int, cell]), y: cell, block, facing: direction.default("east") });
 
 const cameraPart = z.object({ ...common, type: z.literal("camera"), name: z.string(), at: point, yaw: z.number(), pitch: z.number() });
 
@@ -213,6 +224,19 @@ const river = z.object({
   water: block.default("minecraft:water"),
 });
 
+/**
+ * The sea: every column whose ground is below `level` is filled with water up to it, over a `bed` of sand
+ * or gravel. With `beach`, gentle ground up to `above` layers over the water shows the beach block. Unlike
+ * rivers, the sea may reach the volume edge: it is meant for world saves whose surroundings are sea at the
+ * same level (`surroundings.sea`), so nothing can run out.
+ */
+const sea = z.object({
+  level: int,
+  bed: block,
+  water: block.default("minecraft:water"),
+  beach: z.object({ block, above: int.nonnegative() }).optional(),
+});
+
 const terrainPart = z.object({
   ...common,
   type: z.literal("terrain"),
@@ -229,6 +253,7 @@ const terrainPart = z.object({
   flats: z.array(flatRect).default([]),
   trails: z.array(trail).default([]),
   rivers: z.array(river).default([]),
+  sea: sea.optional(),
   /** Solid blocks below the surface. Omit for solid down to layer 0; a number makes a shell (cliffs stay closed). */
   depth: z.number().int().positive().optional(),
   surface: block,
@@ -267,12 +292,17 @@ const treesPart = z.object({
   ...common,
   type: z.literal("trees"),
   on: z.string(),
+  /**
+   * `spruce`: tiered, snow on each tier (the default). `cypress`: a tall narrow column. `pine`: a stone pine,
+   * a bare trunk under a flat umbrella crown. `olive`: short and round. Only spruce uses `snow` and `dead`.
+   */
+  style: z.enum(["spruce", "cypress", "pine", "olive"]).default("spruce"),
   at: z.array(cell).default([]),
   scatter: scatterSchema.optional(),
   dead: z.number().min(0).max(1).default(0),
   trunk: block,
   leaves: block,
-  snow: block,
+  snow: block.optional(),
   minHeight: z.number().int().min(4),
   maxHeight: z.number().int().min(4),
 });
@@ -305,8 +335,11 @@ const villagePart = z.object({
   church: cell.optional(),
   radius: z.number().int().positive(),
   houses: z.number().int().nonnegative(),
-  /** "classic" is the first layout (level ground only, ridges along Z); "varied" adds the options below. */
-  style: z.enum(["classic", "varied"]).default("classic"),
+  /**
+   * "classic" is the first layout (level ground only, ridges along Z); "varied" adds the options below;
+   * "explorable" is varied with houses one can walk into, furnished from `interior`.
+   */
+  style: z.enum(["classic", "varied", "explorable"]).default("classic"),
   wall: block,
   accent: block.optional(),
   lodges: z.number().min(0).max(1).default(0),
@@ -317,9 +350,158 @@ const villagePart = z.object({
   light: block,
   post: block,
   lantern: block,
+  /** For explorable villages: floor and ceiling, window glass, a table and chairs (stairs), a hanging light, a candle for the table, and stairs for front steps. */
+  interior: z.object({ floor: block, glass: block, table: block, chair: block, light: block, candle: block, step: block }).optional(),
+});
+
+/**
+ * A restaurant facing `facing` on level ground, its floor at layer `y`, over the footprint `x` by `z`.
+ * The front is an open arcade (pillars every `bay` columns) to walk in through; inside are tables with a
+ * candle and a chair either side, a lantern over each, and a bar along the back. A `terrace` that many rows
+ * deep runs along the front under an `awning` striped in its two blocks, with tables and lamp posts.
+ */
+const restaurantPart = z.object({
+  ...common,
+  type: z.literal("restaurant"),
+  x: cell,
+  z: cell,
+  y: int,
+  facing: direction,
+  bay: z.number().int().min(2).default(3),
+  terrace: z.number().int().nonnegative().default(4),
+  wall: block,
+  pillar: block,
+  roof: block,
+  floor: block,
+  terraceFloor: block,
+  glass: block,
+  awning: z.tuple([block, block]),
+  table: block,
+  chair: block,
+  light: block,
+  candle: block,
+  counter: block,
+  post: block,
+  lantern: block,
+});
+
+/**
+ * A boat's hull, solid, its bow pointing `bow`. The transom is at `stern` (a coordinate along the bow
+ * direction) and the hull runs `length` blocks from it; `center` is the centre line across, `beam` the
+ * width at the deck (odd). Sections narrow from the deck down to the keel, and over the last `bowLength`
+ * blocks the hull narrows to a point while the keel rises, which rakes the bow. The top layer, `deckY`, is
+ * `deck` inside a `shell` gunwale. `stripes` paint the outer face of a layer, over `along` (a range of
+ * distance from the stern) when given. A `rail` stands on the deck edge, except over `gaps` (ranges of
+ * distance from the stern, for a gangway); panes and fences in it are joined to each other.
+ */
+const hullPart = z.object({
+  ...common,
+  type: z.literal("hull"),
+  bow: direction,
+  stern: int,
+  length: z.number().int().min(4),
+  center: int,
+  beam: z.number().int().positive().refine((n) => n % 2 === 1, "beam must be odd, so the hull has a centre line"),
+  keelY: int,
+  deckY: int,
+  bowLength: z.number().int().positive(),
+  shell: block,
+  deck: block,
+  stripes: z.array(z.object({ y: int, block, along: cell.optional() })).default([]),
+  rail: z.object({ block, gaps: z.array(cell).default([]) }).optional(),
+});
+
+/**
+ * One tier of a boat's superstructure, placed in the same hull space as a `hull` (bow direction, `stern`,
+ * `center`): from `from` to `to` blocks from the stern, layers `y` up for `height`, `halfWidth` either side
+ * of the centre line. Its plan narrows to a rounded nose over the last `taper` blocks and has its aft
+ * corners rounded to `radius`; each layer up, the front draws back by `rake` (a raked windscreen), the aft
+ * end by `aftRake` and the sides by `tumble`. Walls are hollow. Where a wall top is exposed it becomes a
+ * `slope` stair rising towards the part, or a `trim` slab, so the outline steps smoothly; `windows` rows
+ * use glass, also where they slope (stepped glass) unless they name `slope` stairs. The top layer is the `roof` (edged in `trim`), unless `open`,
+ * when it is just more wall, such as a coaming.
+ */
+const deckhousePart = z.object({
+  ...common,
+  type: z.literal("deckhouse"),
+  bow: direction,
+  stern: int,
+  center: int,
+  from: z.number(),
+  to: z.number(),
+  y: int,
+  height: z.number().int().positive(),
+  halfWidth: z.number().positive(),
+  taper: z.number().nonnegative().default(0),
+  radius: z.number().nonnegative().default(0),
+  rake: z.number().default(0),
+  aftRake: z.number().default(0),
+  tumble: z.number().default(0),
+  open: z.boolean().default(false),
+  wall: block,
+  roof: block,
+  slope: block,
+  trim: block,
+  windows: z.object({ rows: z.array(int), block, slope: block.optional() }).optional(),
+});
+
+/**
+ * A hill town that grows over the ground of a terrain part around `at`, out to about `radius` (an
+ * irregular edge), thickest along the lanes (the terrain's trails). Each house runs along the contour with
+ * its door downhill; where the slope falls away the house gains a lower storey down to the ground, so it
+ * sits into the hillside instead of on a levelled terrace. Houses mix the `walls` colours, have low-pitched
+ * tile hip roofs (`roofs` slabs) or, a fraction `flat` of them, flat roofs with a terrace; some have two
+ * storeys and a balcony. Details: open `shutters`, bougainvillea (`flowers`), potted plants, outside steps,
+ * and furnished rooms one can walk into. A `church` with a bell tower stands on its own spot.
+ */
+const hillsidePart = z.object({
+  ...common,
+  type: z.literal("hillside"),
+  on: z.string(),
+  at: cell,
+  radius: z.number().int().positive(),
+  houses: z.number().int().nonnegative(),
+  /** The biggest rise across a house's footprint; steeper sites are left alone. */
+  maxSlope: z.number().int().positive().default(7),
+  walls: z.array(block).min(1),
+  stone: block,
+  roofs: z.array(block).min(1),
+  ridge: block,
+  flat: z.number().min(0).max(1).default(0.3),
+  twoStorey: z.number().min(0).max(1).default(0.4),
+  terrace: block,
+  door: block,
+  shutters: z.array(block).min(1),
+  flowers: block,
+  pots: z.array(block).min(1),
+  fence: block,
+  interior: z.object({ floor: block, glass: block, table: block, chair: block, light: block, candle: block, step: block, rugs: z.array(block).min(1), ladder: block }),
+  church: z.object({ at: cell, facing: direction, wall: block, bell: block }).optional(),
+});
+
+/**
+ * Things on a beach, standing on the ground of a terrain part: striped `umbrellas` (with a pair of sunbeds
+ * each) in the `colors`, and small rowing `boats` pulled up on the sand, bows pointing the given way.
+ */
+const beachPart = z.object({
+  ...common,
+  type: z.literal("beach"),
+  on: z.string(),
+  umbrellas: z.array(cell).default([]),
+  colors: z.array(block).min(1),
+  pole: block,
+  bed: block,
+  boats: z.array(z.tuple([int, int, direction])).default([]),
+  boatColors: z.array(block).min(1),
+  boatWood: z.string(),
 });
 
 export const partSchema = z.discriminatedUnion("type", [
+  hullPart,
+  deckhousePart,
+  hillsidePart,
+  beachPart,
+  restaurantPart,
   spotPart,
   deskRowPart,
   stationPart,
@@ -368,6 +550,8 @@ const shellSchema = z.preprocess(
  */
 const atmosphereSchema = z.object({
   biome: block.optional(),
+  /** In world saves, the biome over columns whose surface is water (a warm ocean turns the water turquoise). */
+  seaBiome: block.optional(),
   weather: z.enum(["clear", "rain", "thunder"]).optional(),
   /** Ticks into the day: 0 sunrise, 6000 noon, 12000 sunset, 13000 dusk, 18000 midnight. */
   time: z.number().int().nonnegative().optional(),
@@ -383,6 +567,12 @@ export const designSchema = z.object({
   floorY: int.nonnegative().default(0),
   shell: shellSchema,
   atmosphere: atmosphereSchema.optional(),
+  /**
+   * What lies around the design in a world save. Omitted, it is AgentCraft's meadow (its grass top at world
+   * y 64). `sea` makes it open sea instead, its surface at layer `level` of the design
+   * and its floor `floor`, out to the horizon: the terrain's own sea should meet it at the same level.
+   */
+  surroundings: z.object({ sea: z.object({ level: int.nonnegative(), floor: block.default("minecraft:sand") }) }).optional(),
   parts: z.array(partSchema),
 });
 
@@ -400,7 +590,9 @@ export function parseDesign(json: unknown): Design {
   }
   const terrains = new Set(design.parts.filter((p) => p.type === "terrain").map((p) => p.id));
   for (const part of design.parts) {
-    if ((part.type === "trees" || part.type === "village" || part.type === "boulders") && !terrains.has(part.on)) throw new Error(`${part.type} '${part.id}' stands on '${part.on}', which is not a terrain part`);
+    if ((part.type === "trees" || part.type === "village" || part.type === "boulders" || part.type === "hillside" || part.type === "beach") && !terrains.has(part.on)) throw new Error(`${part.type} '${part.id}' stands on '${part.on}', which is not a terrain part`);
+    if (part.type === "taskWall" && (part.facing === "east" || part.facing === "west" ? typeof part.x !== "number" || typeof part.z === "number" : typeof part.z !== "number" || typeof part.x === "number"))
+      throw new Error(`taskWall '${part.id}': facing east or west takes an x and a z range; facing north or south, a z and an x range`);
     if (part.type === "trees" && part.at.length === 0 && !part.scatter) throw new Error(`trees '${part.id}' have neither 'at' nor 'scatter'`);
     for (const target of part.over) if (!seen.has(target)) throw new Error(`part '${part.id}' overrides unknown part '${target}'`);
   }

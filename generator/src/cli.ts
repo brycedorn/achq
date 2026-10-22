@@ -22,7 +22,7 @@ const USAGE = `usage:
        (a ready-to-open AgentCraft HQ world save; defaults: snowy-chalet, latest, 0,64,0, ../out/worlds)
   cli play [--design <name>] [--version <n>] [--origin <x,y,z>] [--no-launch] [--no-shot]
        (place it in your HQ world; defaults: snowy-chalet, latest version, origin 40,64,40)
-  cli play --save [--design <name>] [--version <n>] [--no-launch] [--no-shot]
+  cli play --save [--design <name>] [--version <n>] [--no-launch] [--no-shot] [--restart] [--cams a,b]
        (open a generated world save instead, setting your HQ world aside)
   cli play --restore
        (put your HQ world back after --save)`;
@@ -155,6 +155,8 @@ if (command === "validate" && rest[0]) {
         origin: parseOrigin(flag(rest, "origin") ?? (save ? "0,64,0" : "40,64,40")),
         launch: !rest.includes("--no-launch"),
         screenshot: !rest.includes("--no-shot"),
+        restart: rest.includes("--restart"),
+        cameras: flag(rest, "cams")?.split(","),
         say,
       });
     }

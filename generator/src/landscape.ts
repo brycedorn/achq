@@ -1,4 +1,4 @@
-import { type Design, type Part } from "./design.js";
+import { type Design, type Direction, type Part } from "./design.js";
 import { type Volume } from "./schematic.js";
 
 type Vec3 = readonly [number, number, number];
@@ -26,6 +26,7 @@ export type Ctx = {
 };
 
 const colKey = (x: number, z: number) => x + z * 100_000;
+const FLIP: Record<Direction, Direction> = { north: "south", south: "north", east: "west", west: "east" };
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const smooth = (t: number) => t * t * (3 - 2 * t);
 
@@ -214,7 +215,10 @@ export function terrain(ctx: Ctx, part: Of<"terrain">): void {
         if (d <= half + 2) keepClear.add(key);
       });
 
-      row.push(Math.max(0, Math.min(height - 1, Math.round(h))));
+      const top = Math.max(0, Math.min(height - 1, Math.round(h)));
+      // Nothing grows or is built in the sea or right at its edge.
+      if (part.sea && top <= part.sea.level) keepClear.add(key);
+      row.push(top);
     }
     heights.push(row);
   }
@@ -233,14 +237,20 @@ export function terrain(ctx: Ctx, part: Of<"terrain">): void {
       const key = colKey(x, z);
       const water = waterAt.get(key);
       const trail = trailAt.get(key);
+      const sea = part.sea;
+      const underSea = sea !== undefined && !water && h < sea.level;
+      const beach = sea?.beach && !steep && h >= sea.level && h <= sea.level + sea.beach.above ? sea.beach.block : undefined;
       for (let y = bottom; y <= h; y++) {
         // The ground is written straight to the volume: other parts may overwrite it freely.
         let block = y >= h - 2 ? (steep ? rock : part.surface) : part.base;
         if (water && y >= h - 1) block = water.river.bed;
         else if (trail && y >= h - 1) block = trail.surface;
+        else if (underSea && !steep && y >= h - 1) block = sea.bed;
+        else if (beach && y >= h - 2) block = beach;
         v.set(x, y, z, block);
       }
       if (water) for (let y = h + 1; y <= water.level; y++) v.set(x, y, z, water.frozen ? water.river.ice : water.river.water);
+      if (underSea) for (let y = h + 1; y <= sea.level; y++) v.set(x, y, z, sea.water);
     }
 
   // Lamps along trails, alternating sides.
@@ -315,6 +325,15 @@ export function trees(ctx: Ctx, part: Of<"trees">): void {
     ...scattered.map((at) => ({ at, dead: hash2(at[0], at[1], design.seed + 5) < part.dead })),
   ];
   const span = Math.max(part.maxHeight - part.minHeight + 1, 1);
+  if (part.style !== "spruce") {
+    for (const { at: [tx, tz] } of sites) {
+      const base = g.height(tx, tz);
+      if (base === undefined) throw new RangeError(`tree at ${tx}, ${tz} is outside the terrain '${part.on}'`);
+      const size = part.minHeight + Math.floor(hash2(tx, tz, design.seed) * span);
+      warmTree(ctx, part, tx, base, tz, size);
+    }
+    return;
+  }
   // Tiers: each band widens, then steps back in, like a spruce. Index is depth below the tip.
   const TIERS = [0, 1, 2, 1, 2, 3, 2, 3, 3, 2];
 
@@ -351,11 +370,68 @@ export function trees(ctx: Ctx, part: Of<"trees">): void {
           if (!inside(v, x, y, z)) continue;
           // Snow rests on the top of each tier: cells with no leaves above them.
           const exposed = dx * dx + dz * dz > above * above + 1;
-          set(x, y, z, exposed ? part.snow : part.leaves);
+          set(x, y, z, exposed ? (part.snow ?? part.leaves) : part.leaves);
         }
     }
     for (let y = base + 1; y < top; y++) if (inside(v, tx, y, tz)) set(tx, y, tz, part.trunk); // the tip stays leaves
   }
+}
+
+/** One cypress, stone pine or olive, `size` blocks tall, standing on the ground at `base`. */
+function warmTree(ctx: Ctx, part: Of<"trees">, tx: number, base: number, tz: number, size: number): void {
+  const { design, v, set } = ctx;
+  const leaf = (x: number, y: number, z: number) => {
+    if (inside(v, x, y, z) && !ctx.claimed(x, y, z)) set(x, y, z, part.leaves);
+  };
+  const log = (x: number, y: number, z: number, axis = "y") => {
+    if (inside(v, x, y, z)) set(x, y, z, axis === "y" ? part.trunk : `${part.trunk}[axis=${axis}]`);
+  };
+  const top = base + size;
+  for (let y = base + 1; y <= top; y++) if (ctx.claimed(tx, y, tz)) return; // a house or a post is in the way
+  const r = (salt: number) => hash2(tx + salt, tz - salt, design.seed + 61);
+  if (part.style === "cypress") {
+    // A dark flame: one wide in the middle, a plus shape low down, a single spire at the top.
+    for (let y = base + 1; y <= top - 2; y++) log(tx, y, tz);
+    for (let y = base + 2; y <= top; y++) {
+      const fromTop = top - y;
+      leaf(tx, y, tz);
+      if (fromTop >= 2) for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) leaf(tx + dx, y, tz + dz);
+      if (fromTop >= 4 && y <= base + Math.ceil(size * 0.55))
+        for (const [dx, dz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]] as const) if (r(y) < 0.5) leaf(tx + dx, y, tz + dz);
+    }
+    return;
+  }
+  if (part.style === "pine") {
+    // A bare trunk that leans a little, then a wide flat crown: a full disc with a narrower one on top.
+    const [lx, lz] = r(1) < 0.5 ? [r(2) < 0.5 ? 1 : -1, 0] : [0, r(3) < 0.5 ? 1 : -1];
+    const bend = base + Math.round(size * 0.55);
+    let [x, z] = [tx, tz];
+    for (let y = base + 1; y <= top; y++) {
+      if (y === bend) [x, z] = [x + lx, z + lz];
+      log(x, y, z);
+    }
+    const radius = 3 + Math.floor(r(4) * 2);
+    for (let dx = -radius; dx <= radius; dx++)
+      for (let dz = -radius; dz <= radius; dz++) {
+        const d = dx * dx + dz * dz;
+        if (d <= radius * radius + 1 && r(dx * 7 + dz) > 0.08) leaf(x + dx, top, z + dz);
+        if (d <= (radius - 1) * (radius - 1)) leaf(x + dx, top + 1, z + dz);
+        if (d <= 2 && d > 0) log(x + dx, top, z + dz, dx !== 0 ? "x" : "z"); // branches under the crown
+      }
+    return;
+  }
+  // Olive: a short, thick trunk that forks, under a rounded crown that does not quite close.
+  const trunkTop = base + Math.max(2, Math.round(size * 0.4));
+  for (let y = base + 1; y <= trunkTop; y++) log(tx, y, tz);
+  const radius = Math.max(2, Math.round(size * 0.45));
+  const cy = trunkTop + Math.round(radius * 0.6);
+  for (let dy = -Math.round(radius * 0.6); dy <= Math.round(radius * 0.8); dy++)
+    for (let dx = -radius; dx <= radius; dx++)
+      for (let dz = -radius; dz <= radius; dz++) {
+        const n = (dx * dx + dz * dz) / (radius * radius) + (dy * dy) / ((radius * 0.75) * (radius * 0.75));
+        if (n <= 1 && hash2(tx + dx * 3 + dy, tz + dz * 5, design.seed + 67) > 0.18) leaf(tx + dx, cy + dy, tz + dz);
+      }
+  for (let y = trunkTop + 1; y < cy; y++) log(tx, y, tz);
 }
 
 export function boulders(ctx: Ctx, part: Of<"boulders">): void {
@@ -387,6 +463,7 @@ export function boulders(ctx: Ctx, part: Of<"boulders">): void {
 // ---------- village ----------
 
 export function village(ctx: Ctx, part: Of<"village">): void {
+  if (part.style === "explorable" && !part.interior) throw new Error(`village '${part.id}' is explorable but has no 'interior'`);
   if (part.style === "classic") villageClassic(ctx, part);
   else villageVaried(ctx, part);
 }
@@ -455,6 +532,76 @@ function villageVaried(ctx: Ctx, part: Of<"village">): void {
   }
   }
 
+  type House = {
+    at: (u: number, w: number) => [number, number];
+    a: number;
+    b: number;
+    half: number;
+    base: number;
+    wallH: number;
+    wall: string;
+    alongZ: boolean;
+    lodge: boolean;
+    rand: (salt: number) => number;
+  };
+  /**
+   * Make a house one can walk into (`style: "explorable"`): hollow it out, lay a floor and a ceiling, close
+   * the gables, open a door at the downhill end with steps up from the ground, glaze the windows, and put
+   * in a hanging lantern, a table with chairs and a lit candle, and a barrel.
+   */
+  const furnish = ({ at, a, b, half, base, wallH, wall, alongZ, lodge, rand }: House) => {
+    const inner = part.interior!;
+    const eave = base + wallH + 1;
+    const put = (u: number, w: number, y: number, state: string) => {
+      const [x, z] = at(u, w);
+      set(x, y, z, state);
+    };
+    // Unit steps across (+u) and along (+w) the ridge, as compass directions.
+    const plusU: Direction = alongZ ? "east" : "south";
+    const plusW: Direction = alongZ ? "south" : "east";
+    for (let u = 1; u < a - 1; u++)
+      for (let w = 1; w < b - 1; w++) {
+        put(u, w, base, inner.floor);
+        for (let y = base + 1; y <= base + wallH; y++) put(u, w, y, "minecraft:air");
+        put(u, w, eave, inner.floor); // the ceiling
+      }
+    // The gable ends, which the roof leaves open, and the eave row between the lowest roof stairs.
+    for (let k = 0; k < half; k++)
+      for (let u = k + 1; u < a - 1 - k; u++)
+        for (const w of [0, b - 1]) put(u, w, eave + k, wall);
+    // The door at the end where the ground is lower, with steps down to it.
+    const ground = (u: number, w: number) => g.height(...at(u, w)) ?? base;
+    const front = ground(half, -1) <= ground(half, b) ? 0 : b - 1;
+    const out = front === 0 ? -1 : 1;
+    const outward: Direction = front === 0 ? FLIP[plusW] : plusW;
+    put(half, front, base + 1, "minecraft:air");
+    put(half, front, base + 2, "minecraft:air");
+    put(half, front, base, inner.floor);
+    const drop = Math.min(base - ground(half, front + out), 4);
+    for (let i = 1; i <= drop; i++) {
+      const y = base + 1 - i;
+      const [x, z] = at(half, front + out * i);
+      if (ctx.claimed(x, y, z) || ctx.claimed(x, y + 1, z)) break;
+      set(x, y, z, `${inner.step}[facing=${FLIP[outward]},half=bottom]`);
+      for (let yy = (g.height(x, z) ?? y) + 1; yy < y; yy++) set(x, yy, z, part.stone);
+    }
+    // Windows: both long sides, and the front either side of the door on wide houses.
+    for (const w of [2, b - 3]) {
+      put(0, w, base + 2, inner.glass);
+      put(a - 1, w, base + 2, inner.glass);
+    }
+    if (a >= 7) for (const u of [half - 2, half + 2]) put(u, front, base + 2, inner.glass);
+    // A lantern from the ceiling, a table away from the door with a chair either side, and a barrel.
+    const back = front === 0 ? b - 3 : 2; // the row of the table
+    put(half, Math.floor(b / 2), base + wallH, inner.light);
+    put(half, back, base + 1, inner.table);
+    put(half, back, base + 2, inner.candle);
+    put(half - 1, back, base + 1, `${inner.chair}[facing=${FLIP[plusU]},half=bottom]`);
+    put(half + 1, back, base + 1, `${inner.chair}[facing=${plusU},half=bottom]`);
+    put(1, front === 0 ? 1 : b - 2, base + 1, "minecraft:barrel[facing=up]");
+    if (lodge && rand(30) < 0.7) put(a - 2, front === 0 ? 1 : b - 2, base + 1, "minecraft:flower_pot");
+  };
+
   // Houses. `a` is the width across the ridge (odd), `b` the length along it.
   const ry = Math.round(part.radius * 0.7);
   let placed = 0;
@@ -497,14 +644,18 @@ function villageVaried(ctx: Ctx, part: Of<"village">): void {
     if (alongZ) fill([x0 + half, ridgeY, z0], [x0 + half, ridgeY, z1], part.ridge);
     else fill([x0, ridgeY, z0 + half], [x1, ridgeY, z0 + half], part.ridge);
 
-    // Glowing windows: the front, and the sides some of the time.
-    const front = lodge ? [half - 2, half + 2] : [half];
-    for (const u of front) {
-      const [wx, wz] = at(u, 0);
-      lit(wx, base + (lodge ? 3 : 2), wz);
+    if (part.style === "explorable") {
+      furnish({ at, a, b, half, base, wallH, wall, alongZ, lodge, rand });
+    } else {
+      // Glowing windows: the front, and the sides some of the time.
+      const front = lodge ? [half - 2, half + 2] : [half];
+      for (const u of front) {
+        const [wx, wz] = at(u, 0);
+        lit(wx, base + (lodge ? 3 : 2), wz);
+      }
+      if (rand(25) < 0.6) lit(at(0, 2)[0], base + 2, at(0, 2)[1]);
+      if (rand(26) < 0.6) lit(at(a - 1, b - 3)[0], base + 2, at(a - 1, b - 3)[1]);
     }
-    if (rand(25) < 0.6) lit(at(0, 2)[0], base + 2, at(0, 2)[1]);
-    if (rand(26) < 0.6) lit(at(a - 1, b - 3)[0], base + 2, at(a - 1, b - 3)[1]);
     // A street lamp at the front corner.
     const [lx, lz] = at(-1, -1);
     fill([lx, base + 1, lz], [lx, base + 2, lz], part.post);

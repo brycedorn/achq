@@ -1,4 +1,4 @@
-# ACHQ — Spec
+# ACHQ spec
 
 A generator that turns a prompt or concept into an AgentCraft-compatible HQ: a building shell plus the anchors the mod needs to run agents inside it. The first test case is a snowy mountain chalet with views of a mountain range; the goal is the pipeline, not one building.
 
@@ -122,6 +122,18 @@ What it adds beyond a plain building:
 - **Warmth.** Lanterns, a fireplace and warm light inside against the cold outside.
 
 The terrain and the building are separate parts of the design, so a revision can change the range without moving the desks.
+
+## Second example: a yacht off a Mediterranean island
+
+`riviera-yacht` puts the chalet's office (the same 13 x 19 room, so every anchor keeps its place) inside the salon of a motor yacht moored stern-to the quay of an island town. It is a world-save design: the sea runs on past the edges (`surroundings.sea`), and the water over the sea is the turquoise warm-ocean biome while the land is dry savanna (`atmosphere.seaBiome`). The design file is written by `tools/make-riviera-yacht-v1.py`.
+
+What it added to the generator, all opt-in so earlier designs render the same blocks:
+- **`terrain.sea`**: water up to a level over a sand bed, and a beach just above it. Unlike rivers, the sea may reach the volume edge, because the surroundings are sea at the same level.
+- **`hull`**: a boat's hull from a few numbers: beam, keel, deck, a pointed and raked bow, painted stripes over a range, a joined glass rail.
+- **`deckhouse`**: a superstructure tier in the hull's frame: a rounded nose, rounded aft corners, a windscreen raked layer by layer (stairs, or stepped glass across window rows), slab edges. Tiers stack into a deckhouse, an overhanging upper deck, a flybridge, a hardtop and a radar arch.
+- **`hillside`**: a town that grows over the ground the way island towns do, rather than on levelled terraces: houses along the contours with their doors downhill and a lower storey where the slope falls away, densest along the lanes and thinning out at an irregular edge, tile hip roofs or flat roofs with terraces and pergolas, two-storey houses with balconies, open shutters, bougainvillea, outside stairs, furnished rooms, and a church with a bell tower. The lanes are the terrain's trails, laid out as switchbacks.
+- **`restaurant`** and **`beach`**: walk-in restaurants with terraces and awnings, umbrellas with sunbeds, boats pulled up on the sand.
+- **Tree styles**: `cypress`, `pine` (stone pine) and `olive`, beside the snowy `spruce`.
 
 ## Other scene concepts: cliff overlooking the ocean
 
