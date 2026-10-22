@@ -29,6 +29,9 @@ const COLORS = {
   "agentcraft:walnut_panel": "#5b3a22", "agentcraft:walnut_trim": "#4a2e1a", "agentcraft:oak_parquet": "#b8945f",
   glass: "#bfe3ee", tinted_glass: "#3a3340", barrel: "#7a5a34", copper_block: "#c06a4e", cut_copper: "#c06a4e",
   iron_block: "#d8d8d8", gold_block: "#f6d03e", obsidian: "#15101f", netherrack: "#6b3030",
+  calcite: "#dfe0dc", smooth_sandstone: "#e0d6a8", terracotta: "#985e43", white_terracotta: "#d1b2a1", yellow_terracotta: "#ba8523",
+  pink_terracotta: "#a14e4e", resin_brick: "#c7612f", resin_bricks: "#c7612f", jungle_leaves: "#3f7a2a", azalea_leaves: "#5d7a2b",
+  flowering_azalea_leaves: "#8a5f8f", dark_oak_leaves: "#2f5222", end_rod: "#f0ece4", warped_trapdoor: "#2b6e6a",
 };
 const GLASSY = /(^|_)(glass|glass_pane|ice)$|stained_glass|^water$/;
 const GLOWING = /^(lantern|soul_lantern|glowstone|sea_lantern|shroomlight|jack_o_lantern|torch|campfire|agentcraft:(monitor|status_lamp|glow_panel))$/;

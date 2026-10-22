@@ -1,5 +1,14 @@
 # ACHQ handoff, 2026-10-10 (late evening), updated 2026-10-20
 
+## Update, 2026-10-22
+
+- New design `riviera-yacht` v1 (`tools/make-riviera-yacht-v1.py`): a 62 x 17 motor yacht moored stern-to the quay of a Mediterranean island town. Salon on the main deck is the workroom (desks along both hull walls, stations on the forward bulkhead, podium in the middle, goal projector sunk under a glass floor panel); stairs from the aft deck lead to the upper deck, with a U-settee lounge aft and a dining table (meeting) under the hardtop. Verified in game: layout loads (all anchors), every camera view, the goal hologram clear of the ceiling.
+- New generator parts and options (all opt-in; every earlier version renders byte-identically): `terrain.sea`, `surroundings.sea`, `atmosphere.seaBiome` (per-column biome in world saves), `hull`, `deckhouse`, `hillside` (contour-following hill town with walk-in houses and a church), `restaurant`, `beach`, tree styles `cypress`/`pine`/`olive`, a per-part `floor` (upper decks), desk rows and stations facing any way, task walls on any wall.
+- New check: the goal hologram needs open space 3 to 4 blocks above the `goal:atrium` lamp.
+- Dev tooling: `play --restart` (save and quit a running dev game first) and `--cams a,b`; generated worlds are set aside as `(achq ...)`, so `restore` always brings back the user's own world.
+- Design principle (from the user): every element should look made for its scene and be sized just right; only AgentCraft's anchor rules are fixed.
+- Ideas not done: a cabin deck below the salon, navigation lights, smoothing the hull's stepped bow, detailing inside town houses and restaurants.
+
 ## Update, 2026-10-20
 
 - Remote `main` has a new commit (`ec211b1`), apparently the merge of PR #2 (`chalet-terrain`). The local checkout was still on `chalet-terrain`: pull `main` and branch before committing.

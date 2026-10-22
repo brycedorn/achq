@@ -40,6 +40,16 @@ describe("installWorld", () => {
     expect(tagOf(join(saves, HQ))).toBe("generated");
   });
 
+  it("sets a generated HQ world aside without making it the one to restore", () => {
+    world(join(saves, HQ), "older generated");
+    writeFileSync(join(saves, HQ, "agentcraft-world.json"), JSON.stringify({ createdBy: "achq" }));
+    world(join(saves, `${HQ} (backup 2026-01-01 00-00-00)`), "mine");
+    expect(installWorld(world(join(root, "gen"), "generated"), saves, quiet)).toBeUndefined();
+    expect(readdirSync(saves).some((n) => n.startsWith(`${HQ} (achq `))).toBe(true);
+    restoreWorld(saves, quiet);
+    expect(tagOf(join(saves, HQ))).toBe("mine");
+  });
+
   it("refuses something that is not a world save, or a missing saves folder", () => {
     mkdirSync(join(root, "empty"));
     expect(() => installWorld(join(root, "empty"), saves, quiet)).toThrow(/no level.dat/);

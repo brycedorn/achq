@@ -98,11 +98,30 @@ function logTail(lines = 12): string {
   }
 }
 
-/** Stop unless Minecraft is closed: world files must not change under a running game. */
-async function requireClosed(why: string): Promise<void> {
-  if (await Bridge.connect(1_500).then((b) => (b?.close(), b !== undefined))) {
-    throw new Error(`Minecraft is already running. Close it (quit to title, then close the window) and run this again: ${why}`);
+/**
+ * Stop unless Minecraft is closed: world files must not change under a running game. With `restart`, a
+ * running development game is asked to save and quit first (the DevBridge's `dev.quit`).
+ */
+async function requireClosed(why: string, restart = false, say: Say = () => {}): Promise<void> {
+  const running = await Bridge.connect(1_500);
+  if (!running) return;
+  if (!restart) {
+    running.close();
+    throw new Error(`Minecraft is already running. Close it (or pass --restart) and run this again: ${why}`);
   }
+  say("asking the running game to save and quit...");
+  await running.request("dev.quit", {}, 20_000).catch(() => undefined);
+  running.close();
+  for (let i = 0; i < 60; i++) {
+    await sleep(1_000);
+    const still = await Bridge.connect(1_000);
+    if (!still) {
+      await sleep(3_000); // let the JVM release the world files
+      return;
+    }
+    still.close();
+  }
+  throw new Error("the running game did not quit; close it and run this again");
 }
 
 /** Start Minecraft (`gradlew runClient`, upstream studio autobuild off), wait for the HQ world to load, and connect. */
@@ -146,10 +165,16 @@ async function launch(say: Say): Promise<Bridge> {
   }
 }
 
-/** Look through `cam_vista` (or the first camera) and save a screenshot; a miss is reported, not fatal. */
-async function screenshot(bridge: Bridge, layout: Layout, name: string, say: Say): Promise<void> {
-  const camera = "cam_vista" in layout.anchors ? "cam_vista" : Object.keys(layout.anchors).find((n) => n.startsWith("cam_"));
-  if (!camera) return;
+/**
+ * Look through a camera (`cam_vista`, else the first one) and save a screenshot; a miss is reported, not
+ * fatal.
+ */
+async function screenshot(bridge: Bridge, layout: Layout, name: string, say: Say, which?: string): Promise<void> {
+  const camera = which ? `cam_${which}` : "cam_vista" in layout.anchors ? "cam_vista" : Object.keys(layout.anchors).find((n) => n.startsWith("cam_"));
+  if (!camera || !(camera in layout.anchors)) {
+    if (which) say(`  no camera '${which}' in this design`);
+    return;
+  }
   say(`screenshot from ${camera} (keep the mouse still for a moment)...`);
   try {
     await bridge.request("dev.camera", { anchor: camera }, 30_000);
@@ -169,6 +194,10 @@ export type PlayOptions = {
   launch: boolean;
   /** Take a screenshot through `cam_vista` (or the first camera) when everything is in place. */
   screenshot: boolean;
+  /** Save and quit a running development game first, instead of stopping. */
+  restart?: boolean;
+  /** Cameras to take screenshots through (names without `cam_`); default `vista`. */
+  cameras?: string[];
   say: Say;
 };
 
@@ -179,7 +208,7 @@ export type PlayOptions = {
  */
 export async function play(design: Design, opts: PlayOptions): Promise<void> {
   const { say } = opts;
-  await requireClosed("the anchors file is only read when the world loads.");
+  await requireClosed("the anchors file is only read when the world loads.", opts.restart, say);
   if (!existsSync(WORLD_DIR)) {
     throw new Error(`no HQ world at ${WORLD_DIR}. Start the game once to create it (cd mod; gradlew.bat runClient), close it, and run this again.`);
   }
@@ -210,7 +239,7 @@ export async function play(design: Design, opts: PlayOptions): Promise<void> {
     const status = unchanged ? "same  " : reply["success"] === false ? "FAILED" : "ok    ";
     say(`  ${status} ${cmd}  (${secs} s)${messages.length ? `  ${messages.join(" | ")}` : ""}`);
   }
-  if (opts.screenshot) await screenshot(bridge, out.layout, `${design.name}-v${design.version}`, say);
+  if (opts.screenshot) for (const cam of opts.cameras ?? [undefined]) await screenshot(bridge, out.layout, `${design.name}-v${design.version}`, say, cam);
   const spawnAt = out.layout.anchors["spawn"];
   if (spawnAt) await bridge.request("dev.command", { cmd: `/tp @s ${spawnAt.x} ${spawnAt.y} ${spawnAt.z}` }, 30_000);
   bridge.close();
@@ -224,7 +253,7 @@ export async function play(design: Design, opts: PlayOptions): Promise<void> {
  */
 export async function playSave(design: Design, opts: PlayOptions): Promise<void> {
   const { say } = opts;
-  await requireClosed("the world folder is about to be swapped.");
+  await requireClosed("the world folder is about to be swapped.", opts.restart, say);
 
   say(`writing the world save for '${design.name}' v${design.version}...`);
   const result = writeWorld(design, opts.origin, join(WORLDS_OUT, `${design.name}-v${design.version}`));
@@ -237,7 +266,7 @@ export async function playSave(design: Design, opts: PlayOptions): Promise<void>
   const bridge = await launch(say);
   const anchors = await bridge.request("dev.command", { cmd: "/agentcraft anchors" }, 30_000);
   say(`  AgentCraft: ${((anchors["messages"] as string[] | undefined) ?? []).slice(0, 1).join("")}`);
-  if (opts.screenshot) await screenshot(bridge, result.layout, `${design.name}-v${design.version}-save`, say);
+  if (opts.screenshot) for (const cam of opts.cameras ?? [undefined]) await screenshot(bridge, result.layout, `${design.name}-v${design.version}-save`, say, cam);
   bridge.close();
   say("done: the game is running in the generated world. Close it, then run 'play --restore' to get your world back.");
 }

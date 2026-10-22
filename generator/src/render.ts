@@ -2,6 +2,9 @@ import { type Layout } from "./anchors.js";
 import { type Design, type Direction, type Part, YAW } from "./design.js";
 import { parseState, Volume } from "./schematic.js";
 import { hqBox } from "./setup.js";
+import { deckhouse, hull } from "./hull.js";
+import { beach, hillside } from "./hillside.js";
+import { restaurant } from "./town.js";
 import { boulders, type Ctx, type Ground, terrain, trees, village } from "./landscape.js";
 
 const AIR = "minecraft:air";
@@ -70,7 +73,11 @@ export function renderDesign(design: Design, { origin }: Placement): { volume: V
     anchors[anchor] = { x: ox + x, y: oy + y, z: oz + z, yaw, pitch };
   };
   /** A standing spot at the centre of block column (x, z), feet on the floor surface. */
-  const spot = (anchor: string, x: number, z: number, look: Direction) => put(anchor, x + 0.5, feet, z + 0.5, YAW[look]);
+  const spot = (anchor: string, x: number, z: number, look: Direction, f = feet) => put(anchor, x + 0.5, f, z + 0.5, YAW[look]);
+  /** Feet layer of a part that may stand on its own `floor`. */
+  const feetOf = (part: { floor?: number | undefined }) => (part.floor ?? floorY) + 1;
+  /** One block in compass direction `d`. */
+  const STEP: Record<Direction, readonly [number, number]> = { north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0] };
 
   // Parts write through `set`/`fill` so overlapping parts are reported, not silently overwritten.
   // The shell is written directly: parts may deliberately replace wall or floor cells.
@@ -106,9 +113,9 @@ export function renderDesign(design: Design, { origin }: Placement): { volume: V
    * A seat: a bottom-half stairs block at the anchor cell, back away from the way the agent looks.
    * The cell to the agent's right must stay free floor, which the layouts guarantee by spacing.
    */
-  const seat = (anchor: string, x: number, z: number, look: Direction, block: string) => {
-    set(x, feet, z, `${block}[facing=${OPPOSITE[look]},half=bottom]`);
-    spot(anchor, x, z, look);
+  const seat = (anchor: string, x: number, z: number, look: Direction, block: string, f = feet) => {
+    set(x, f, z, `${block}[facing=${OPPOSITE[look]},half=bottom]`);
+    spot(anchor, x, z, look, f);
   };
   /** Stairs whose raised step is on side `facing` (the direction of ascent). */
   const stairs = (block: string, facing: Direction, half: "bottom" | "top" = "bottom") => `${block}[facing=${facing},half=${half}]`;
@@ -136,12 +143,52 @@ export function renderDesign(design: Design, { origin }: Placement): { volume: V
   const ground = new Map<string, Ground>();
   const ctx: Ctx = { design, v, set, fill, claimed, ground };
 
+  /**
+   * A desk row looking any way, on any floor: desks run across the way the agents look (along X when they
+   * look north or south, along Z when east or west), each chair one cell behind its desk.
+   */
+  const deskRowFacing = (part: Extract<Part, { type: "deskRow" }>) => {
+    const f = feetOf(part);
+    const [lx, lz] = STEP[part.look];
+    const [ax, az] = part.look === "south" || part.look === "north" ? [1, 0] : [0, 1];
+    part.agents.forEach((agent, i) => {
+      const [x, z] = [part.at[0] + ax * part.spacing * i, part.at[1] + az * part.spacing * i];
+      const facing = YAW[OPPOSITE[part.look]];
+      if (!part.screen) {
+        set(x, f, z, part.desk);
+        set(x, f + 1, z, part.monitor);
+        put(`monitor_${agent}`, x + 0.5 - 0.5 * lx, f + 1.5, z + 0.5 - 0.5 * lz, facing);
+      } else {
+        const { block, width: w, height: h } = part.screen;
+        const half = (w - 1) / 2;
+        for (let k = -half; k <= half; k++) {
+          set(x + ax * k, f, z + az * k, part.desk);
+          for (let dy = 1; dy <= h; dy++) {
+            set(x + ax * k, f + dy, z + az * k, block);
+            bind(x + ax * k, f + dy, z + az * k, agent);
+          }
+        }
+        if (part.lamp) {
+          set(x, f + h + 1, z, part.lamp);
+          bind(x, f + h + 1, z, `agent:${agent}`);
+        }
+        // The centre of the screen, just behind the front of the panel (the studio's offset).
+        put(`monitor_${agent}`, x + 0.5 + 0.248 * lx, f + 1 + h / 2, z + 0.5 + 0.248 * lz, facing);
+      }
+      seat(`desk_${agent}`, x - lx, z - lz, part.look, part.chair, f);
+    });
+  };
+
   const render = (part: Part): void => {
     switch (part.type) {
       case "spot":
-        spot(part.anchor, part.at[0], part.at[1], part.look);
+        spot(part.anchor, part.at[0], part.at[1], part.look, feetOf(part));
         break;
       case "deskRow": {
+        if (part.look !== "south" || part.floor !== undefined) {
+          deskRowFacing(part);
+          break;
+        }
         const [x0, deskZ] = part.at;
         part.agents.forEach((agent, i) => {
           const x = x0 + part.spacing * i;
@@ -172,28 +219,43 @@ export function renderDesign(design: Design, { origin }: Placement): { volume: V
         });
         break;
       }
-      case "station":
-        set(part.at[0], feet, part.at[1] + 1, part.block);
-        if (part.binding) bind(part.at[0], feet, part.at[1] + 1, part.binding);
-        spot(part.station, part.at[0], part.at[1], "south");
+      case "station": {
+        const f = feetOf(part);
+        const [dx, dz] = STEP[part.look];
+        set(part.at[0] + dx, f, part.at[1] + dz, part.block);
+        if (part.binding) bind(part.at[0] + dx, f, part.at[1] + dz, part.binding);
+        spot(part.station, part.at[0], part.at[1], part.look, f);
         break;
-      case "seatedTable":
-        fill([part.table.from[0], feet, part.table.from[1]], [part.table.to[0], feet, part.table.to[1]], part.table.block);
-        part.seats.forEach(([x, z, look], i) => seat(slot(part.station, i + 1), x, z, look, part.chair));
+      }
+      case "seatedTable": {
+        const f = feetOf(part);
+        fill([part.table.from[0], f, part.table.from[1]], [part.table.to[0], f, part.table.to[1]], part.table.block);
+        part.seats.forEach(([x, z, look], i) => seat(slot(part.station, i + 1), x, z, look, part.chair, f));
         break;
+      }
       case "lanternGrid":
         for (const x of part.xs) for (const z of part.zs) set(x, part.y, z, part.block);
         break;
-      case "podium":
-        set(part.at[0], feet, part.at[1], part.block);
-        if (part.binding) bind(part.at[0], feet, part.at[1], part.binding);
-        put("decision_podium", part.at[0] + 0.5, feet + 1, part.at[1] + 0.5, YAW.north);
+      case "podium": {
+        const f = feetOf(part);
+        set(part.at[0], f, part.at[1], part.block);
+        if (part.binding) bind(part.at[0], f, part.at[1], part.binding);
+        put("decision_podium", part.at[0] + 0.5, f + 1, part.at[1] + 0.5, YAW.north);
         break;
+      }
       case "taskWall": {
-        const [z0, z1] = part.z;
         const [y0, y1] = part.y;
-        fill([part.x, y0, z0], [part.x, y1, z1], part.block);
-        put("task_wall", part.x + 1, (y0 + y1 + 1) / 2, (z0 + z1 + 1) / 2, YAW.east);
+        if (part.facing === "east" || part.facing === "west") {
+          const [z0, z1] = part.z as [number, number];
+          const x = part.x as number;
+          fill([x, y0, z0], [x, y1, z1], part.block);
+          put("task_wall", part.facing === "east" ? x + 1 : x, (y0 + y1 + 1) / 2, (z0 + z1 + 1) / 2, YAW[part.facing]);
+        } else {
+          const [x0, x1] = part.x as [number, number];
+          const z = part.z as number;
+          fill([x0, y0, z], [x1, y1, z], part.block);
+          put("task_wall", (x0 + x1 + 1) / 2, (y0 + y1 + 1) / 2, part.facing === "south" ? z + 1 : z, YAW[part.facing]);
+        }
         break;
       }
       case "device":
@@ -276,6 +338,21 @@ export function renderDesign(design: Design, { origin }: Placement): { volume: V
         break;
       case "village":
         village(ctx, part);
+        break;
+      case "hull":
+        hull(ctx, part);
+        break;
+      case "restaurant":
+        restaurant(ctx, part);
+        break;
+      case "deckhouse":
+        deckhouse(ctx, part);
+        break;
+      case "hillside":
+        hillside(ctx, part);
+        break;
+      case "beach":
+        beach(ctx, part);
         break;
       case "fireplace": {
         // `d` points from the room into the wall.

@@ -116,6 +116,18 @@ export function checkDesign(design: Design): DesignProblem[] {
   const spawn = layout.anchors["spawn"];
   if (spawn && !walk.cellAt(spawn.x, spawn.y, spawn.z)) problem("spawn", "the spawn spot is not walkable");
 
+  // The goal lamp projects its hologram card about 3.5 blocks above itself (`StatusLampRenderer.HOLO_Y`, a card up
+  // to about 2 blocks tall): a ceiling or anything solid 3 or 4 blocks over the lamp cuts through it.
+  for (const part of design.parts) {
+    if (part.type !== "device" || part.binding !== "goal:atrium") continue;
+    const [x, y, z] = part.at;
+    for (const dy of [3, 4]) {
+      const top = walk.top(x, y + dy, z);
+      if (top !== undefined && !/glass|lantern/.test(volume.get(x, y + dy, z)))
+        problem(part.id, `the goal hologram needs open space 3 to 4 blocks above the lamp, but ${volume.get(x, y + dy, z)} is at ${x}, ${y + dy}, ${z}; lower the lamp (it can sit under the floor) or give it a higher ceiling`);
+    }
+  }
+
   // Every spot must be walkable from `entrance` and from `lounge`, as the mod checks, with its movement rules.
   for (const from of ["entrance", "lounge"]) {
     const start = targets.get(from);
