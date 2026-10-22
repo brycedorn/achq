@@ -496,7 +496,56 @@ const beachPart = z.object({
   boatWood: z.string(),
 });
 
+/**
+ * A cylinder along `axis`, hollow inside (carved to air unless `carve` is false), from `from` to `to` along
+ * the axis, its centre line at `center` (the other two coordinates: y and z for an X cylinder, x and y for Z,
+ * x and z for Y). `radiusEnd`, when given, tapers it linearly into a cone frustum. The wall is one block of
+ * `shell`. `windows` glaze the wall where the angle from the top (0) round to the bottom (180) is in `angle`,
+ * over `along`; for a Y cylinder `along` alone picks the heights. `floor` lays a floor inside at `offset`
+ * from the centre (horizontal cylinders). `ribs` ring the outside every `every` blocks; `caps` close the ends.
+ */
+const cylinderPart = z.object({
+  ...common,
+  type: z.literal("cylinder"),
+  axis: z.enum(["x", "y", "z"]),
+  center: cell,
+  from: int,
+  to: int,
+  radius: z.number().positive(),
+  radiusEnd: z.number().positive().optional(),
+  shell: block,
+  carve: z.boolean().default(true),
+  windows: z.array(z.object({ angle: z.tuple([z.number(), z.number()]).optional(), along: cell.optional(), block })).default([]),
+  /** `alt` lays the floor in 2 x 2 tiles of the two blocks, like deck plating. */
+  floor: z.object({ offset: int, block, alt: block.optional() }).optional(),
+  ribs: z.object({ every: z.number().int().positive(), block }).optional(),
+  /** A fraction `amount` of the wall's plain cells use one of `blocks` instead: hull panels, patched and varied. */
+  patches: z.object({ blocks: z.array(block).min(1), amount: z.number().min(0).max(1) }).optional(),
+  caps: z.object({ from: z.boolean().default(true), to: z.boolean().default(true), block: block.optional() }).default({ from: true, to: true }),
+});
+
+/**
+ * A sphere, or the half of one that faces `half`: a shell of `shell`, glazed with `glass` between a frame of
+ * meridians every `meridians` degrees and a ring at the equator when given, hollow inside (unless `carve` is
+ * false). `floor` lays a floor inside at `offset` from the centre, with `glassFrom` glazing it from that
+ * offset along the facing direction, or towards the south for a full sphere (a glass floor to look down through).
+ */
+const spherePart = z.object({
+  ...common,
+  type: z.literal("sphere"),
+  center: cell3,
+  radius: z.number().positive(),
+  half: z.enum(["full", "up", "down", "north", "south", "east", "west"]).default("full"),
+  shell: block,
+  glass: block.optional(),
+  meridians: z.number().positive().optional(),
+  carve: z.boolean().default(true),
+  floor: z.object({ offset: int, block, glass: block.optional(), glassFrom: int.optional() }).optional(),
+});
+
 export const partSchema = z.discriminatedUnion("type", [
+  cylinderPart,
+  spherePart,
   hullPart,
   deckhousePart,
   hillsidePart,
@@ -572,7 +621,53 @@ export const designSchema = z.object({
    * y 64). `sea` makes it open sea instead, its surface at layer `level` of the design
    * and its floor `floor`, out to the horizon: the terrain's own sea should meet it at the same level.
    */
-  surroundings: z.object({ sea: z.object({ level: int.nonnegative(), floor: block.default("minecraft:sand") }) }).optional(),
+  surroundings: z
+    .object({
+      sea: z.object({ level: int.nonnegative(), floor: block.default("minecraft:sand") }).optional(),
+      /** Nothing at all round the design: open sky in every direction (a void world). */
+      void: z.boolean().optional(),
+      /**
+       * A planet far below, written straight into the world save: a sphere of `radius` whose top is at layer
+       * `top` of the design (usually far below it) over the column `center`, out to `extent` blocks. Oceans,
+       * shallows, land, desert, mountains and ice come from noise; a cloud layer floats `clouds` above the
+       * surface; `cities` (a fraction of land) glow on the night side.
+       */
+      planet: z
+        .object({
+          center: cell,
+          top: int,
+          radius: z.number().positive(),
+          extent: z.number().int().positive(),
+          seaLevel: z.number().min(0).max(1).default(0.55),
+          clouds: z.number().int().positive().default(5),
+          cities: z.number().min(0).max(1).default(0.01),
+        })
+        .optional(),
+      /**
+       * Other bodies in the sky, written into the world save: spheres at `center` (design coordinates), striped in
+       * `bands` from top to bottom, pocked with `craters` when given, ringed when given a `ring` (a flat annulus,
+       * tilted by `tilt` blocks up per block east). Keep them within render distance (about 190 blocks).
+       */
+      bodies: z
+        .array(
+          z.object({
+            center: cell3,
+            radius: z.number().positive(),
+            bands: z.array(block).min(1),
+            craters: block.optional(),
+            ring: z.object({ inner: z.number().positive(), outer: z.number().positive(), blocks: z.array(block).min(1), tilt: z.number().default(0) }).optional(),
+          }),
+        )
+        .default([]),
+      /** A belt of `count` rocks, `minSize` to `maxSize` across, round `center` at `radius` (give or take `spread`), between heights `y`. */
+      asteroids: z
+        .object({ center: cell, radius: z.number().positive(), spread: z.number().nonnegative(), y: cell, count: z.number().int().positive(),
+          minSize: z.number().positive(), maxSize: z.number().positive(), blocks: z.array(block).min(1) })
+        .optional(),
+    })
+    .optional(),
+  /** Where the design goes in the world unless told otherwise (the corner at its layer 0). Default 0, 64, 0. */
+  origin: z.tuple([int, int, int]).optional(),
   parts: z.array(partSchema),
 });
 

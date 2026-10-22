@@ -19,7 +19,7 @@ const USAGE = `usage:
   cli restore --saves <folder>
        (put the backed-up HQ world back)
   cli world [--design <name>] [--version <n>] [--origin <x,y,z>] [--out <dir>]
-       (a ready-to-open AgentCraft HQ world save; defaults: snowy-chalet, latest, 0,64,0, ../out/worlds)
+       (a ready-to-open AgentCraft HQ world save; defaults: snowy-chalet, latest, the design's origin or 0,64,0, ../out/worlds)
   cli play [--design <name>] [--version <n>] [--origin <x,y,z>] [--no-launch] [--no-shot]
        (place it in your HQ world; defaults: snowy-chalet, latest version, origin 40,64,40)
   cli play --save [--design <name>] [--version <n>] [--no-launch] [--no-shot] [--restart] [--cams a,b]
@@ -59,11 +59,18 @@ function report(layout: ReturnType<typeof parseLayout>): never | void {
 
 /** Print design problems and exit 1 when there are any. */
 function requireClean(design: ReturnType<typeof loadDesign>): void {
-  const problems = checkDesign(design);
+  const warnings: ReturnType<typeof checkDesign> = [];
+  const problems = checkDesign(design, warnings);
+  for (const w of warnings) console.warn(`warning: ${w.where}: ${w.message}`);
   if (problems.length === 0) return;
   for (const p of problems) console.error(`${p.where}: ${p.message}`);
   console.error(`${problems.length} problem${problems.length === 1 ? "" : "s"} in '${design.name}' v${design.version}; nothing written`);
   process.exit(1);
+}
+
+/** Where a world save puts the design: its own `origin`, else 0, 64, 0. */
+function saveOrigin(design: ReturnType<typeof loadDesign>): string {
+  return (design.origin ?? [0, 64, 0]).join(",");
 }
 
 function designFromFlags(args: string[], fallback?: string): ReturnType<typeof loadDesign> {
@@ -105,7 +112,7 @@ if (command === "validate" && rest[0]) {
   requireClean(design);
   const out = pathFlag(rest, "out") ?? `../out/worlds/${design.name}-v${design.version}`;
   const started = Date.now();
-  const result = writeWorld(design, parseOrigin(flag(rest, "origin") ?? "0,64,0"), out);
+  const result = writeWorld(design, parseOrigin(flag(rest, "origin") ?? saveOrigin(design)), out);
   console.log(`wrote the world save ${result.dir} (${result.chunks} chunks in ${result.regions} region files, ${((Date.now() - started) / 1000).toFixed(1)} s)`);
   report(result.layout);
   console.log("To use it: put the 'AgentCraft HQ' folder in place of the one in AgentCraft's saves folder (back yours up first).");
@@ -133,7 +140,7 @@ if (command === "validate" && rest[0]) {
       if (!save) {
         const design = designFromFlags(rest, "snowy-chalet");
         requireClean(design);
-        save = writeWorld(design, parseOrigin(flag(rest, "origin") ?? "0,64,0"), `../out/worlds/${design.name}-v${design.version}`).dir;
+        save = writeWorld(design, parseOrigin(flag(rest, "origin") ?? saveOrigin(design)), `../out/worlds/${design.name}-v${design.version}`).dir;
       }
       const backup = installWorld(save, saves, say);
       say(`Done. Start AgentCraft: it opens the 'AgentCraft HQ' world.${backup ? " To undo: npm run restore -- --saves <the same folder>." : ""}`);
@@ -152,7 +159,7 @@ if (command === "validate" && rest[0]) {
       requireClean(design);
       const save = rest.includes("--save");
       await (save ? playSave : play)(design, {
-        origin: parseOrigin(flag(rest, "origin") ?? (save ? "0,64,0" : "40,64,40")),
+        origin: parseOrigin(flag(rest, "origin") ?? (save ? saveOrigin(design) : "40,64,40")),
         launch: !rest.includes("--no-launch"),
         screenshot: !rest.includes("--no-shot"),
         restart: rest.includes("--restart"),

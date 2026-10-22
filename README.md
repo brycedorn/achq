@@ -2,7 +2,7 @@
 
 Generates custom HQ worlds for [AgentCraft](https://github.com/blendi-remade/agentcraft), the Fabric mod that runs Claude agents as NPCs in a walkable Minecraft studio.
 
-AgentCraft builds one fixed studio. ACHQ takes a design file and writes a ready-to-open AgentCraft HQ world instead: the terrain, the building, the mod's working blocks (desk monitors, task board, decision podium, stations) and the `agentcraft-anchors.json` that tells AgentCraft where agents sit, walk and spawn. Two designs so far: a snowy mountain chalet in a river valley (`snowy-chalet`), and a motor yacht moored at a Mediterranean island town (`riviera-yacht`), with the office in its salon and a walkable town on the hillside.
+AgentCraft builds one fixed studio. ACHQ takes a design file and writes a ready-to-open AgentCraft HQ world instead: the terrain, the building, the mod's working blocks (desk monitors, task board, decision podium, stations) and the `agentcraft-anchors.json` that tells AgentCraft where agents sit, walk and spawn. Three designs so far: a snowy mountain chalet in a river valley (`snowy-chalet`); a motor yacht moored at a Mediterranean island town (`riviera-yacht`), with the office in its salon and a walkable town on the hillside; and a modular space station over a night-side planet (`orbital-station`), with a sun, a ringed gas giant, moons and an asteroid belt in the sky.
 
 ACHQ only generates the world. It is not affiliated with the AgentCraft project.
 
@@ -51,6 +51,7 @@ Relative paths are read from the repo root. To skip `--saves` every time, set `A
 ```bash
 npm run import -- --saves <folder> --design snowy-chalet --version 6   # an older version of a design
 npm run import -- --saves <folder> --design riviera-yacht                 # the yacht
+npm run import -- --saves <folder> --design orbital-station               # the space station
 npm run import -- --saves <folder> --save <world folder>               # a world save you already wrote
 npm run world                                                           # only write the save, to out/worlds/
 ```

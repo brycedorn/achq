@@ -16,3 +16,4 @@ mod/.gradle/
 mod/build/
 references/
 out/
+.claude/

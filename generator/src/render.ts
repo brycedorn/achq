@@ -5,6 +5,7 @@ import { hqBox } from "./setup.js";
 import { deckhouse, hull } from "./hull.js";
 import { beach, hillside } from "./hillside.js";
 import { restaurant } from "./town.js";
+import { cylinder, sphere } from "./shapes.js";
 import { boulders, type Ctx, type Ground, terrain, trees, village } from "./landscape.js";
 
 const AIR = "minecraft:air";
@@ -240,7 +241,9 @@ export function renderDesign(design: Design, { origin }: Placement): { volume: V
         const f = feetOf(part);
         set(part.at[0], f, part.at[1], part.block);
         if (part.binding) bind(part.at[0], f, part.at[1], part.binding);
-        put("decision_podium", part.at[0] + 0.5, f + 1, part.at[1] + 0.5, YAW.north);
+        // The anchor faces the way the podium does (north unless its block says otherwise).
+        const facing = (parseState(part.block).properties["facing"] ?? "north") as Direction;
+        put("decision_podium", part.at[0] + 0.5, f + 1, part.at[1] + 0.5, YAW[facing] ?? YAW.north);
         break;
       }
       case "taskWall": {
@@ -353,6 +356,12 @@ export function renderDesign(design: Design, { origin }: Placement): { volume: V
         break;
       case "beach":
         beach(ctx, part);
+        break;
+      case "cylinder":
+        cylinder(ctx, part);
+        break;
+      case "sphere":
+        sphere(ctx, part);
         break;
       case "fireplace": {
         // `d` points from the room into the wall.

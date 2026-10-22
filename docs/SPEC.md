@@ -135,6 +135,18 @@ What it added to the generator, all opt-in so earlier designs render the same bl
 - **`restaurant`** and **`beach`**: walk-in restaurants with terraces and awnings, umbrellas with sunbeds, boats pulled up on the sand.
 - **Tree styles**: `cypress`, `pine` (stone pine) and `olive`, beside the snowy `spruce`.
 
+## Third example: a space station over a planet
+
+`orbital-station` is an ISS-style station at real station scale: narrow modules (a 7-block deck, a 3-block aisle) round a node, all on one deck. The command module is the workroom (desks along both walls, the podium facing down the module, a glass floor strip over the planet); the lab holds the stations; the wardroom the dining table; the observation bulb is a glass-floored viewing lounge with the goal projector on a pedestal. A ladder from the node drops to a glass cupola under the station. Outside: an open lattice truss with solar wings, radiators, a robotic arm, fluid lines, handrails, hull plating. The design file is written by `tools/make-orbital-station-v1.py`.
+
+What it added to the generator, all opt-in:
+- **`cylinder`** and **`sphere`** parts: modules along any axis (tapering into a cone if asked) with window bands, a floor (optionally tiled), ribs, end caps and patchwork hull plating; glass domes with a frame and a glass floor.
+- **`surroundings.void`** (open sky in every direction) and **`surroundings.planet`**: a curved planet far below, written straight into the world save (oceans, continents, deserts, ice, clouds, city lights), no bigger design needed. **`surroundings.bodies`** and **`surroundings.asteroids`**: banded, cratered, ringed spheres and a rock belt in the sky, the same way.
+- **`origin`** on a design: where a world save puts it by default (the station sits high in the sky).
+- The podium's anchor faces the way its block does.
+- A `check` warning when a roof sits over the spawn point: Minecraft places a new player on the first full block looking down from the sky (`PlayerSpawnFinder`), so a roofed spawn means arriving on the roof. Panes, bars and slabs let the search fall through; the station has a pane hatch over its spawn. The saved chalet and yacht versions get this warning.
+- In space nothing should burn: the station's lights are sea lanterns, froglights and end rods.
+
 ## Other scene concepts: cliff overlooking the ocean
 
 1. **Glass-walled research station**: half-carved into the cliff face, half-cantilevered over the water. Each agent's workspace gets a different ocean view.

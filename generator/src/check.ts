@@ -1,7 +1,8 @@
 import { CAST_IDS, SHARED_STATIONS, validateLayout } from "./anchors.js";
 import { type Design, YAW } from "./design.js";
 import { renderDesign } from "./render.js";
-import { Walk } from "./walk.js";
+import { collisionTop, Walk } from "./walk.js";
+import { parseState } from "./schematic.js";
 
 export type DesignProblem = { where: string; message: string };
 
@@ -25,7 +26,16 @@ const OPPOSITE: Record<string, string> = { south: "north", north: "south", east:
  * seat and reachability rules follow the mod's own `dev.hq.check` (`HqCheck`) and the agents' seat
  * logic (`Seats`). Rendered at origin 0,0,0, so anchor coordinates equal local block coordinates.
  */
-export function checkDesign(design: Design): DesignProblem[] {
+/** Whether a block has a full top face to stand on, as Minecraft's spawn search sees it (an approximation). */
+function fullTop(state: string): boolean {
+  const { name, properties } = parseState(state);
+  if (name === "minecraft:air" || collisionTop(state) === undefined) return false;
+  if (name.endsWith("_slab")) return properties["type"] === "top" || properties["type"] === "double";
+  if (name.endsWith("_stairs")) return properties["half"] === "top";
+  return !/(_pane|iron_bars|_fence|_fence_gate|_wall|_carpet|lantern|end_rod|chain|_trapdoor|_door|flower_pot|potted_|candle|lever|_button|pressure_plate|daylight_detector|ladder|_rail|torch|bell|lectern|brewing_stand|_leaves|agentcraft:)/.test(name);
+}
+
+export function checkDesign(design: Design, warnings?: DesignProblem[]): DesignProblem[] {
   const problems: DesignProblem[] = [];
   const problem = (where: string, message: string): void => {
     problems.push({ where, message });
@@ -125,6 +135,22 @@ export function checkDesign(design: Design): DesignProblem[] {
       const top = walk.top(x, y + dy, z);
       if (top !== undefined && !/glass|lantern/.test(volume.get(x, y + dy, z)))
         problem(part.id, `the goal hologram needs open space 3 to 4 blocks above the lamp, but ${volume.get(x, y + dy, z)} is at ${x}, ${y + dy}, ${z}; lower the lamp (it can sit under the floor) or give it a higher ceiling`);
+    }
+  }
+
+  // Minecraft puts a new player on the first block with a full top face looking down from the sky over the spawn
+  // (`PlayerSpawnFinder.getLevelRespawnPos`), not at the spawn itself: a roof over it means arriving on the roof.
+  // Panes, bars, slabs and other partial blocks let the search fall through. A warning, not an error.
+  if (warnings && spawn) {
+    const [sx, sy, sz] = [Math.floor(spawn.x), Math.floor(spawn.y + 0.01), Math.floor(spawn.z)];
+    for (let y = volume.height - 1; y >= sy; y--) {
+      const state = volume.get(sx, y, sz);
+      if (state.includes("water") || state.includes("lava")) break;
+      if (fullTop(state)) {
+        if (y + 1 !== sy)
+          warnings.push({ where: "spawn", message: `new players will arrive on top of ${state} at y ${y + 1}, not at the spawn: open the column above it, or use panes, bars or slabs there` });
+        break;
+      }
     }
   }
 
