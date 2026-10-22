@@ -1,5 +1,12 @@
 # ACHQ handoff, 2026-10-10 (late evening), updated 2026-10-20
 
+## Update, 2026-10-22 (later)
+
+- New design `orbital-station` v1 (`tools/make-orbital-station-v1.py`, pinned in the golden test): see SPEC "Third example". Verified in game: all anchors load, every camera view, the spawn lands inside, the goal hologram has room.
+- New generator pieces: `cylinder`, `sphere`, `surroundings.void`/`planet`/`bodies`/`asteroids`, design `origin`, podium anchor facing, the roofed-spawn warning.
+- PR screenshots were written to `out/pr-orbital-station/` (git-ignored).
+- Ideas not done: new versions of the chalet and yacht with a pane hatch over their spawn (they currently drop new players on the roof), solar wings that read better at night.
+
 ## Update, 2026-10-22
 
 - New design `riviera-yacht` v1 (`tools/make-riviera-yacht-v1.py`): a 62 x 17 motor yacht moored stern-to the quay of a Mediterranean island town. Salon on the main deck is the workroom (desks along both hull walls, stations on the forward bulkhead, podium in the middle, goal projector sunk under a glass floor panel); stairs from the aft deck lead to the upper deck, with a U-settee lounge aft and a dining table (meeting) under the hardtop. Verified in game: layout loads (all anchors), every camera view, the goal hologram clear of the ceiling.
