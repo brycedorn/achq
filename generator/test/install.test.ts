@@ -1,8 +1,8 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { installWorld, restoreWorld } from "../src/install.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { installWorld, launcherSaves, restoreWorld } from "../src/install.js";
 
 const HQ = "AgentCraft HQ";
 const quiet = () => {};
@@ -87,5 +87,71 @@ describe("restoreWorld", () => {
 
   it("says so when there is nothing to restore", () => {
     expect(() => restoreWorld(saves, quiet)).toThrow(/no backup to restore/);
+  });
+});
+
+describe("launcherSaves", () => {
+  const platform = process.platform;
+  const appdata = process.env["APPDATA"];
+  afterEach(() => {
+    Object.defineProperty(process, "platform", { value: platform });
+    if (appdata === undefined) delete process.env["APPDATA"];
+    else process.env["APPDATA"] = appdata;
+  });
+  const on = (p: string) => Object.defineProperty(process, "platform", { value: p });
+
+  it("finds the launcher's saves folder on each platform", () => {
+    on("win32");
+    process.env["APPDATA"] = join("C:", "Users", "someone", "AppData", "Roaming");
+    expect(launcherSaves()).toBe(join("C:", "Users", "someone", "AppData", "Roaming", ".minecraft", "saves"));
+    delete process.env["APPDATA"];
+    expect(launcherSaves()).toBe(join(homedir(), "AppData", "Roaming", ".minecraft", "saves"));
+    on("darwin");
+    expect(launcherSaves()).toBe(join(homedir(), "Library", "Application Support", "minecraft", "saves"));
+    on("linux");
+    expect(launcherSaves()).toBe(join(homedir(), ".minecraft", "saves"));
+  });
+});
+
+describe("setting worlds aside", () => {
+  let root: string;
+  let saves: string;
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "achq-aside-"));
+    saves = join(root, "saves");
+    mkdirSync(saves);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    rmSync(root, { recursive: true, force: true });
+  });
+  const world = (dir: string, tag: string) => {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "level.dat"), tag);
+    return dir;
+  };
+
+  it("numbers a backup when one with the same time is already there", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 0, 2, 3, 4, 5));
+    world(join(saves, "AgentCraft HQ (backup 2026-01-02 03-04-05)"), "earlier");
+    world(join(saves, "AgentCraft HQ"), "mine");
+    expect(installWorld(world(join(root, "gen"), "generated"), saves, () => {})).toBe("AgentCraft HQ (backup 2026-01-02 03-04-05 2)");
+    expect(readFileSync(join(saves, "AgentCraft HQ (backup 2026-01-02 03-04-05)", "level.dat"), "utf8")).toBe("earlier");
+  });
+
+  it("says nothing can be restored from a saves folder that does not exist", () => {
+    expect(() => restoreWorld(join(root, "missing"), () => {})).toThrow(/no backup to restore/);
+  });
+
+  // Windows will not rename a folder while a file in it is open, which is what a running game does.
+  it.runIf(process.platform === "win32")("explains a world that is in use instead of failing obscurely", () => {
+    world(join(saves, "AgentCraft HQ"), "mine");
+    const handle = openSync(join(saves, "AgentCraft HQ", "level.dat"), "r");
+    try {
+      expect(() => installWorld(world(join(root, "gen"), "generated"), saves, () => {})).toThrow(/in use\. Close Minecraft/);
+    } finally {
+      closeSync(handle);
+    }
   });
 });

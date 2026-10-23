@@ -76,6 +76,7 @@ A design is a JSON file in `designs/<name>/v<N>.json`. Saved versions never chan
 npm run preview -- --design snowy-chalet            # 3D preview in the browser, reloads on edits
 npm run check -- --design snowy-chalet              # every rule AgentCraft depends on
 npm test                                            # the full test suite
+npm run coverage                                    # the test suite with a coverage table
 ```
 
 `check` covers what the mod needs to run agents in the world: every required anchor, a seat at each desk, a monitor facing it, stations agents can walk to from the entrance and the lounge, and a lounge with a place for each agent. Writing a world also stops on anything Minecraft cannot hold (height, chunk size). The rules and AgentCraft's limits are in [docs/SPEC.md](docs/SPEC.md).

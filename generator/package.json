@@ -2,7 +2,9 @@
   "name": "achq-generator",
   "version": "0.0.0",
   "private": true,
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -14,7 +16,8 @@
     "world": "tsx src/cli.ts world",
     "import": "tsx src/cli.ts import",
     "restore": "tsx src/cli.ts restore",
-    "generate": "tsx src/cli.ts generate"
+    "generate": "tsx src/cli.ts generate",
+    "coverage": "vitest run --coverage"
   },
   "dependencies": {
     "prismarine-nbt": "^2.8.0",
@@ -23,6 +26,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^3.2.7",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"

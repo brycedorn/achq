@@ -12,6 +12,7 @@
     "world": "npm --prefix generator run --silent world --",
     "check": "npm --prefix generator run --silent check --",
     "preview": "npm --prefix generator run --silent preview --",
-    "test": "npm --prefix generator test"
+    "test": "npm --prefix generator test",
+    "coverage": "npm --prefix generator run --silent coverage"
   }
 }
