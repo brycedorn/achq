@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { gunzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { loadDesign } from "../src/designs.js";
 import { renderDesign } from "../src/render.js";
@@ -6,20 +7,21 @@ import { renderDesign } from "../src/render.js";
 /**
  * Saved design versions are immutable: the same version must always render the same blocks, so a
  * world built from it can be rebuilt. These are the first 16 hex digits of the SHA-256 of each
- * version's `.nbt` at origin 40, 64, 40. A code change that alters one fails here; if the change
+ * version's `.nbt` at origin 40, 64, 40, taken before compression: gzip writes the operating system
+ * into its header, so the compressed file differs between Windows and Linux. A code change that alters one fails here; if the change
  * is meant to alter old output, it should instead be opt-in for new versions.
  */
 const GOLDEN: Record<string, string> = {
-  "test-office v1": "c2da14092d607f22",
-  "snowy-chalet v1": "268b2c4edb1aa7b9",
-  "snowy-chalet v2": "82cda44fa04a7b5a",
-  "snowy-chalet v3": "9db438f4ec172816",
-  "snowy-chalet v4": "9d13b551cd1d2e7f",
-  "snowy-chalet v5": "64c36b7ba2774242",
-  "snowy-chalet v6": "54401c9e1780bed7",
-  "snowy-chalet v7": "0c539b4c3755c36b",
-  "riviera-yacht v1": "8b051502a0d9585d",
-  "orbital-station v1": "8288af230ff20160",
+  "test-office v1": "24062cb581a3712c",
+  "snowy-chalet v1": "8992d206a635be6b",
+  "snowy-chalet v2": "91ee73f503b2a257",
+  "snowy-chalet v3": "7e2b94cb2c7440ba",
+  "snowy-chalet v4": "06fca43bcc18a6e1",
+  "snowy-chalet v5": "b6c5fb74cf1493c6",
+  "snowy-chalet v6": "0d64107cfa6b06e9",
+  "snowy-chalet v7": "21569ea37293b01b",
+  "riviera-yacht v1": "8ad935aa09d209a8",
+  "orbital-station v1": "888f068c4dc1f877",
 };
 
 describe("saved designs render exactly as before", () => {
@@ -27,7 +29,7 @@ describe("saved designs render exactly as before", () => {
     it(key, () => {
       const [name, v] = key.split(" v") as [string, string];
       const { volume } = renderDesign(loadDesign(name, Number(v)), { origin: [40, 64, 40] });
-      expect(createHash("sha256").update(volume.toStructure()).digest("hex").slice(0, 16)).toBe(hash);
+      expect(createHash("sha256").update(gunzipSync(volume.toStructure())).digest("hex").slice(0, 16)).toBe(hash);
     });
   }
 });
