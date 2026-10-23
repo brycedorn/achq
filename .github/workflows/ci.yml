@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: write # to publish the badge data to the `badges` branch
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: generator
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: generator/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - name: Test, with coverage
+        run: npx vitest run --coverage --coverage.reporter=text --coverage.reporter=json-summary --reporter=default --reporter=json --outputFile.json=test-results.json
+      # Badge data for the README, read by shields.io: written to the `badges` branch on every push to main.
+      - name: Publish badges
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pct=$(node -p "Math.floor(require('./coverage/coverage-summary.json').total.lines.pct)")
+          tests=$(node -p "require('./test-results.json').numPassedTests")
+          color=$(node -p "$pct >= 90 ? 'brightgreen' : $pct >= 80 ? 'green' : $pct >= 70 ? 'yellow' : 'orange'")
+          mkdir -p /tmp/badges && cd /tmp/badges
+          echo "{\"schemaVersion\":1,\"label\":\"coverage\",\"message\":\"${pct}%\",\"color\":\"${color}\"}" > coverage.json
+          echo "{\"schemaVersion\":1,\"label\":\"tests\",\"message\":\"${tests} passing\",\"color\":\"brightgreen\"}" > tests.json
+          git init -q -b badges
+          git add coverage.json tests.json
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -qm "badges for ${GITHUB_SHA}"
+          git push -qf "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" badges

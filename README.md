@@ -1,5 +1,12 @@
 # ACHQ
 
+[![CI](https://github.com/brycedorn/achq/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/brycedorn/achq/actions/workflows/ci.yml)
+[![coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/brycedorn/achq/badges/coverage.json)](https://github.com/brycedorn/achq/actions/workflows/ci.yml)
+[![tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/brycedorn/achq/badges/tests.json)](https://github.com/brycedorn/achq/actions/workflows/ci.yml)
+[![node](https://img.shields.io/badge/node-%E2%89%A522-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org)
+[![Minecraft](https://img.shields.io/badge/Minecraft-26.3-62B47A)](https://www.minecraft.net)
+[![license](https://img.shields.io/github/license/brycedorn/achq)](LICENSE)
+
 Generates custom HQ worlds for [AgentCraft](https://github.com/blendi-remade/agentcraft), the Fabric mod that runs Claude agents as NPCs in a walkable Minecraft studio.
 
 AgentCraft builds one fixed studio. ACHQ takes a design file and writes a ready-to-open AgentCraft HQ world instead: the terrain, the building, the mod's working blocks (desk monitors, task board, decision podium, stations) and the `agentcraft-anchors.json` that tells AgentCraft where agents sit, walk and spawn. Three designs so far: a snowy mountain chalet in a river valley (`snowy-chalet`); a motor yacht moored at a Mediterranean island town (`riviera-yacht`), with the office in its salon and a walkable town on the hillside; and a modular space station over a night-side planet (`orbital-station`), with a sun, a ringed gas giant, moons and an asteroid belt in the sky.
