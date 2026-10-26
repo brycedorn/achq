@@ -148,7 +148,8 @@ const deckPart = z.object({
   z: cell,
   y: int,
   planks: block,
-  rail: z.object({ block, sides: z.array(direction) }),
+  /** `joined` sets each fence's connections, so the railing is closed rather than a row of separate posts a player walks between. */
+  rail: z.object({ block, sides: z.array(direction), joined: z.boolean().default(false) }),
   posts: z.object({ block, every: z.number().int().positive(), bottom: int }),
 });
 
@@ -196,6 +197,9 @@ const profile = z.array(z.tuple([z.number().min(0).max(1), z.number()])).min(2);
 /**
  * A path or street along `points`. The ground under it follows the height profile `y`, `width` wide,
  * blending into the hillside over `margin` blocks, which cuts a bench into a slope. `lamps` puts a post and a lantern at its edge every `every` blocks, alternating sides.
+ * `steps` (a stairs block) climbs every one-block rise along it with a stair, so a steep path can be walked, not jumped.
+ * `parapet` (a wall block) guards it wherever the ground beside it falls away 2 blocks or more: a ledge of rock at the
+ * path's level with the wall on it, as a path along a cliff has.
  */
 const trail = z.object({
   points: polyline,
@@ -203,6 +207,8 @@ const trail = z.object({
   width: z.number().positive(),
   margin: z.number().nonnegative(),
   surface: block,
+  steps: block.optional(),
+  parapet: block.optional(),
   lamps: z.object({ every: z.number().positive(), post: block, lantern: block }).optional(),
 });
 
@@ -300,6 +306,11 @@ const treesPart = z.object({
   at: z.array(cell).default([]),
   scatter: scatterSchema.optional(),
   dead: z.number().min(0).max(1).default(0),
+  /**
+   * Nothing left hanging: dead trees' stub branches carry straight on at their tip (instead of kinking up a block and
+   * touching the branch only at a corner), and any leaf that touches nothing of its tree is trimmed.
+   */
+  tidy: z.boolean().default(false),
   trunk: block,
   leaves: block,
   snow: block.optional(),
@@ -383,6 +394,8 @@ const restaurantPart = z.object({
   counter: block,
   post: block,
   lantern: block,
+  /** Side windows only where there is open air outside them. */
+  tidy: z.boolean().default(false),
 });
 
 /**
@@ -443,6 +456,8 @@ const deckhousePart = z.object({
   slope: block,
   trim: block,
   windows: z.object({ rows: z.array(int), block, slope: block.optional() }).optional(),
+  /** Walls joined face to face round curves and raked noses, with no pieces touching only at their corners. */
+  tidy: z.boolean().default(false),
 });
 
 /**
@@ -477,6 +492,8 @@ const hillsidePart = z.object({
   fence: block,
   interior: z.object({ floor: block, glass: block, table: block, chair: block, light: block, candle: block, step: block, rugs: z.array(block).min(1), ladder: block }),
   church: z.object({ at: cell, facing: direction, wall: block, bell: block }).optional(),
+  /** Windows only where there is open air outside them (not the hillside), pots only on something, the church's lamp on a chain. */
+  tidy: z.boolean().default(false),
 });
 
 /**
@@ -494,6 +511,8 @@ const beachPart = z.object({
   boats: z.array(z.tuple([int, int, direction])).default([]),
   boatColors: z.array(block).min(1),
   boatWood: z.string(),
+  /** Umbrellas with a flat canopy joined together (not corners a block lower, touching it only at a corner), and sunbeds laid on the sand under each half. */
+  tidy: z.boolean().default(false),
 });
 
 /**
@@ -541,6 +560,8 @@ const spherePart = z.object({
   meridians: z.number().positive().optional(),
   carve: z.boolean().default(true),
   floor: z.object({ offset: int, block, glass: block.optional(), glassFrom: int.optional() }).optional(),
+  /** A shell joined face to face everywhere (a little thicker where it curves), with no pieces touching only at corners. */
+  closed: z.boolean().default(false),
 });
 
 export const partSchema = z.discriminatedUnion("type", [
@@ -666,6 +687,12 @@ export const designSchema = z.object({
         .optional(),
     })
     .optional(),
+  /**
+   * Walking it as a player: from the spawn to every agent spot and to each place in `to` (feet at `at`), and back,
+   * without jumping (see `player.ts`). With `walk`, anything a player cannot walk is a design problem; without it
+   * (designs saved before this check), a warning.
+   */
+  walk: z.object({ to: z.array(z.object({ name: z.string(), at: cell3 })).default([]) }).optional(),
   /** Where the design goes in the world unless told otherwise (the corner at its layer 0). Default 0, 64, 0. */
   origin: z.tuple([int, int, int]).optional(),
   parts: z.array(partSchema),

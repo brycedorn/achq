@@ -84,7 +84,11 @@ export function sphere(ctx: Ctx, part: Sphere): void {
       for (let dx = -R; dx <= R; dx++) {
         if (!inside(dx, dy, dz) || !kept(dx, dy, dz)) continue;
         const [x, y, z] = [cx + dx, cy + dy, cz + dz];
-        const edge = !inside(dx + 1, dy, dz) || !inside(dx - 1, dy, dz) || !inside(dx, dy + 1, dz) || !inside(dx, dy - 1, dz) || !inside(dx, dy, dz + 1) || !inside(dx, dy, dz - 1);
+        // The shell: cells with a face out of the sphere; `closed` takes those with an edge or a corner out too, so the
+        // shell is joined face to face everywhere, with no pieces that only touch at their corners.
+        const edge = part.closed
+          ? [-1, 0, 1].some((a) => [-1, 0, 1].some((b) => [-1, 0, 1].some((c) => !inside(dx + a, dy + b, dz + c))))
+          : !inside(dx + 1, dy, dz) || !inside(dx - 1, dy, dz) || !inside(dx, dy + 1, dz) || !inside(dx, dy - 1, dz) || !inside(dx, dy, dz + 1) || !inside(dx, dy, dz - 1);
         if (edge) {
           let block = part.shell;
           if (part.glass) {

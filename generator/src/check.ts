@@ -1,6 +1,8 @@
 import { CAST_IDS, SHARED_STATIONS, validateLayout } from "./anchors.js";
 import { type Design, YAW } from "./design.js";
 import { renderDesign } from "./render.js";
+import { blockOf, PlayerWalk } from "./player.js";
+import { senseChecks } from "./sense.js";
 import { collisionTop, Walk } from "./walk.js";
 import { parseState } from "./schematic.js";
 
@@ -47,7 +49,7 @@ export function checkDesign(design: Design, warnings?: DesignProblem[]): DesignP
   } catch (e) {
     return [{ where: "design", message: e instanceof RangeError ? `a part is outside the ${design.size.join(" x ")} volume: ${e.message}` : String(e) }];
   }
-  const { volume, layout, conflicts } = rendered;
+  const { volume, layout, conflicts, built, onPath } = rendered;
 
   for (const p of validateLayout(layout)) problem(p.anchor, p.message);
 
@@ -80,10 +82,13 @@ export function checkDesign(design: Design, warnings?: DesignProblem[]): DesignP
 
   /** Where reachability is measured to: a seat's step-in cell, or the cell an agent stands in. */
   const targets = new Map<string, [number, number, number]>();
+  /** Seat blocks, which a player only has to walk up to. */
+  const seats = new Map<string, [number, number, number]>();
 
   for (const [name, a] of spots) {
     const [x, y, z] = cellOf(a);
     if (isSeat(name, x, y, z)) {
+      seats.set(name, [x, y, z]);
       const look = LOOKING[a.yaw];
       const state = volume.get(x, y, z);
       if (look !== undefined && /_stairs\[/.test(state) && !state.includes(`facing=${OPPOSITE[look]!}`)) {
@@ -163,6 +168,107 @@ export function checkDesign(design: Design, warnings?: DesignProblem[]): DesignP
       if (name === from) continue;
       const target = targets.get(name);
       if (target && !reach.has(target.join(","))) problem(name, `cannot be reached from ${from}`);
+    }
+  }
+
+  // A player must be able to walk it too: from the spawn to every spot and every place the design names, and back,
+  // without jumping. Problems for designs that ask for this check, warnings for those saved before it.
+  if (spawn && (design.walk || warnings)) {
+    const report = (where: string, message: string) => (design.walk ? problem(where, message) : warnings!.push({ where, message }));
+    const places = new Map<string, readonly [number, number, number]>([...targets, ...seats]);
+    for (const t of design.walk?.to ?? []) places.set(t.name, t.at);
+    // The walk keeps to the HQ and the places named, with room round them.
+    const b = layout.bounds;
+    const xs = [...places.values()].map((p) => p[0]).concat(b ? [b.minX, b.maxX] : [0, volume.width - 1]);
+    const zs = [...places.values()].map((p) => p[2]).concat(b ? [b.minZ, b.maxZ] : [0, volume.length - 1]);
+    const pad = 6;
+    const player = new PlayerWalk(volume, [
+      Math.max(0, Math.min(...xs) - pad), Math.max(0, Math.min(...zs) - pad),
+      Math.min(volume.width - 1, Math.max(...xs) + pad), Math.min(volume.length - 1, Math.max(...zs) + pad),
+    ]);
+    const start = player.standAt(...cellOf(spawn));
+    if (!start) report("spawn", "a player has nowhere to stand at the spawn");
+    else {
+      const { there, back } = player.explore(start);
+      for (const [name, [x, y, z]] of places) {
+        // On the spot; at a seat, on it or beside it.
+        const near = seats.has(name) ? [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]] : [[0, 0]];
+        const at = [...there.entries()].filter(([, s]) => near.some(([dx, dz]) => PlayerWalk.over(s, x + dx!, y, z + dz!))).map(([k]) => k);
+        if (at.some((k) => back.has(k))) continue;
+        if (at.length > 0) {
+          report(name, `a player can walk from the spawn to ${x}, ${y}, ${z} but not back without jumping`);
+          continue;
+        }
+        // Where the walk got closest, to show where it is cut off.
+        let closest: [number, number, number] | undefined;
+        let best = Infinity;
+        for (const s of there.values()) {
+          const [bx, by, bz] = blockOf(s);
+          const d = Math.hypot(bx - x, (by - y) * 2, bz - z);
+          if (d < best) [best, closest] = [d, [bx, by, bz]];
+        }
+        report(name, `a player cannot walk from the spawn to ${x}, ${y}, ${z} without jumping; the walk gets closest at ${closest!.join(", ")}`);
+      }
+
+      // Guarded drops: wherever a player can walk off a built floor or a path into a fall that hurts, there must be a
+      // railing or a wall. Open hillside and natural cliffs are left as they are; stepping off into water is safe.
+      const edges = new Map<string, number>();
+      /** A trail's own surface: its top block (or the stair on it), not the hillside the trail is cut into. */
+      const pathTop = (x: number, y: number, z: number) =>
+        onPath(x, z) && volume.get(x, y, z) !== "minecraft:air" && (y + 1 >= volume.height || volume.get(x, y + 1, z) === "minecraft:air" || /_stairs/.test(volume.get(x, y, z)));
+      // From every place a player stands (the middle of them over the floor), out over the rim of the floor for up to two
+      // blocks, any way they can go (a gap in a railing may take a zigzag to get through), to where they would fall.
+      const RIM = 8;
+      for (const s of there.values()) {
+        // On a built floor or a path: the block under the middle of them, not one their box just overlaps.
+        const [ux, uy, uz] = [Math.floor(s.qx / 4), Math.ceil(s.f - 1e-6) - 1, Math.floor(s.qz / 4)];
+        if (!player.centred(s) || player.climbing(s) || !(built(ux, uy, uz) || pathTop(ux, uy, uz))) continue;
+        let fall: number | undefined;
+        const seen = new Set<string>([`${s.qx},${s.qz}`]);
+        let ring = [s];
+        for (let depth = 0; depth <= RIM && fall === undefined && ring.length > 0; depth++) {
+          const next: (typeof s)[] = [];
+          for (const at of ring) {
+            for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+              fall ??= player.drop(at, dx, dz);
+              const n = player.move(at, dx, dz);
+              // Along the rim only: not back onto a floor (a place of its own), up or down a step, or onto a ladder.
+              if (!n || n.f !== s.f || player.centred(n) || player.climbing(n) || seen.has(`${n.qx},${n.qz}`)) continue;
+              seen.add(`${n.qx},${n.qz}`);
+              next.push(n);
+            }
+          }
+          ring = next;
+        }
+        if (fall !== undefined) {
+          const k = blockOf(s).join(",");
+          edges.set(k, Math.max(edges.get(k) ?? 0, fall));
+        }
+      }
+      // One report per stretch of edge.
+      const seen = new Set<string>();
+      for (const k of [...edges.keys()].sort()) {
+        if (seen.has(k)) continue;
+        const stretch = [k];
+        seen.add(k);
+        for (let i = 0; i < stretch.length; i++) {
+          const [x, y, z] = stretch[i]!.split(",").map(Number) as [number, number, number];
+          for (let dx = -1; dx <= 1; dx++)
+            for (let dz = -1; dz <= 1; dz++) {
+              const n = `${x + dx},${y},${z + dz}`;
+              if (edges.has(n) && !seen.has(n)) {
+                seen.add(n);
+                stretch.push(n);
+              }
+            }
+        }
+        const fall = Math.max(...stretch.map((e) => edges.get(e)!));
+        const deep = Number.isFinite(fall) ? `${Math.floor(fall)} blocks` : "nothing below";
+        report("drop", `an unguarded drop (${deep}) beside ${stretch[0]!.split(",").join(", ")}${stretch.length > 1 ? ` and ${stretch.length - 1} more blocks along the edge` : ""}: add a railing or a wall`);
+      }
+
+      // What a person expects without thinking: paths lead somewhere, doors open onto somewhere, nothing floats.
+      for (const p of senseChecks(design, rendered, player, there)) report(p.where, p.message);
     }
   }
 

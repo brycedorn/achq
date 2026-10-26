@@ -53,9 +53,12 @@ export function restaurant(ctx: Ctx, part: Restaurant): void {
     for (let yy = y + 1; yy < top; yy++) put(u, 0, yy, pillar ? part.pillar : AIR);
     put(u, 0, top, part.wall);
   }
-  // Side windows.
+  // Side windows; when tidy, only where open air is outside them, not the hillside or the next building.
   for (let w = 2; w < depth - 2; w += 2)
     for (const u of [0, width - 1]) {
+      const [ox, oz] = at(u === 0 ? -1 : width, w);
+      const outside = (yy: number) => ctx.v.get(ox, yy, oz) !== AIR;
+      if (part.tidy && (outside(y + 2) || outside(y + 3))) continue;
       put(u, w, y + 2, part.glass);
       put(u, w, y + 3, part.glass);
     }

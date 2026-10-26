@@ -62,7 +62,23 @@ function connectPanels(v: Volume, cells: Iterable<readonly [number, number, numb
  * stand at `floorY + 1`. Parts are applied in list order, which fixes the palette and anchor order,
  * so output is deterministic.
  */
-export function renderDesign(design: Design, { origin }: Placement): { volume: Volume; layout: Layout; conflicts: Conflict[] } {
+/**
+ * What a design renders to: the blocks, the anchors, any overwrites between parts, and what stands where: `built`
+ * tells blocks a part placed from the ground, `onPath` the columns of a trail.
+ */
+export type Rendered = {
+  volume: Volume;
+  layout: Layout;
+  conflicts: Conflict[];
+  built: (x: number, y: number, z: number) => boolean;
+  /** Blocks of nature a part placed (trees, boulders): not floors or walls anyone built. */
+  natural: (x: number, y: number, z: number) => boolean;
+  onPath: (x: number, z: number) => boolean;
+  /** Which trail a column is on, as `<terrain id>:<index>`, if any. */
+  pathOf: (x: number, z: number) => string | undefined;
+};
+
+export function renderDesign(design: Design, { origin }: Placement): Rendered {
   const [width, height, length] = design.size;
   const v = new Volume(width, height, length);
   const [ox, oy, oz] = origin;
@@ -319,11 +335,17 @@ export function renderDesign(design: Design, { origin }: Placement): { volume: V
         const [z0, z1] = part.z;
         fill([x0, part.y, z0], [x1, part.y, z1], part.planks);
         const sides = new Set(part.rail.sides);
+        const onRail = (x: number, z: number) =>
+          x >= x0 && x <= x1 && z >= z0 && z <= z1 &&
+          ((sides.has("north") && z === z0) || (sides.has("south") && z === z1) || (sides.has("west") && x === x0) || (sides.has("east") && x === x1));
+        /** A fence joined to its neighbours along the railing. */
+        const railState = (x: number, z: number) =>
+          `${part.rail.block}[east=${onRail(x + 1, z)},north=${onRail(x, z - 1)},south=${onRail(x, z + 1)},waterlogged=false,west=${onRail(x - 1, z)}]`;
         for (let x = x0; x <= x1; x++)
           for (let z = z0; z <= z1; z++) {
             const onEdge =
               (sides.has("north") && z === z0) || (sides.has("south") && z === z1) || (sides.has("west") && x === x0) || (sides.has("east") && x === x1);
-            if (onEdge) set(x, part.y + 1, z, part.rail.block);
+            if (onEdge) set(x, part.y + 1, z, part.rail.joined ? railState(x, z) : part.rail.block);
             const post = (x === x0 || x === x1 || (x - x0) % part.posts.every === 0) && (z === z0 || z === z1 || (z - z0) % part.posts.every === 0);
             const perimeter = x === x0 || x === x1 || z === z0 || z === z1;
             if (post && perimeter) fill([x, part.posts.bottom, z], [x, part.y - 1, z], part.posts.block);
@@ -397,5 +419,15 @@ export function renderDesign(design: Design, { origin }: Placement): { volume: V
   layout.bounds = hq
     ? { minX: ox + hq[0], minY: oy + hq[1], minZ: oz + hq[2], maxX: ox + hq[3], maxY: oy + hq[4], maxZ: oz + hq[5] }
     : { minX: ox, minY: oy, minZ: oz, maxX: ox + width - 1, maxY: oy + height - 1, maxZ: oz + length - 1 };
-  return { volume: v, layout, conflicts };
+  const onPath = (x: number, z: number) => [...ground.values()].some((g) => g.onPath(x, z));
+  const wild = new Set(design.parts.filter((p) => p.type === "trees" || p.type === "boulders").map((p) => p.id));
+  const natural = (x: number, y: number, z: number) => claimed(x, y, z) && wild.has(claims.get(x + width * (z + length * y))!);
+  const pathOf = (x: number, z: number) => {
+    for (const [id, g] of ground) {
+      const i = g.pathOf(x, z);
+      if (i !== undefined) return `${id}:${i}`;
+    }
+    return undefined;
+  };
+  return { volume: v, layout, conflicts, built: (x, y, z) => claimed(x, y, z) && !natural(x, y, z), natural, onPath, pathOf };
 }

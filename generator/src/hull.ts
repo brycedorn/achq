@@ -8,6 +8,7 @@ type Deckhouse = Extract<Part, { type: "deckhouse" }>;
 /** Blocks whose sides join their neighbours through `north`/`east`/`south`/`west` properties. */
 const JOINS = /(_pane|_fence|iron_bars|_wall)$/;
 const SIDES: readonly (readonly [number, number])[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const AROUND: readonly (readonly [number, number])[] = [...SIDES, [1, 1], [1, -1], [-1, 1], [-1, -1]];
 
 /**
  * Hull space: `s` blocks from the transom towards the bow, `t` blocks across from the centre line. Returns
@@ -128,5 +129,21 @@ export function deckhouse(ctx: Ctx, part: Deckhouse): void {
           continue;
         }
         set(x, y, z, windowRow(y) ? part.windows!.block : part.wall);
+      }
+  // Tidy: where the wall steps diagonally round a curve or a raked nose, fill the outside corner, so the wall is joined
+  // face to face, with no pieces (of glass, say) touching only at their corners, and nothing inside it moves.
+  if (!part.tidy) return;
+  const edge = (s: number, t: number, y: number) => solid(s, t, y) && SIDES.some(([ds, dt]) => !solid(s + ds, t + dt, y));
+  for (let y = part.y; y <= top; y++)
+    for (let s = Math.floor(part.from); s <= Math.ceil(part.to); s++)
+      for (let t = -reach; t <= reach; t++) {
+        if (!edge(s, t, y)) continue;
+        for (const [ds, dt] of AROUND.slice(4)) {
+          if (!edge(s + ds, t + dt, y) || edge(s + ds, t, y) || edge(s, t + dt, y)) continue;
+          const [fs, ft] = solid(s + ds, t, y) ? [s, t + dt] : [s + ds, t];
+          const [x, z] = at(fs, ft);
+          if (ctx.claimed(x, y, z)) continue;
+          set(x, y, z, y === top && !part.open ? part.trim : windowRow(y) ? part.windows!.block : part.wall);
+        }
       }
 }

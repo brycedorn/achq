@@ -11,6 +11,10 @@ export type Ground = {
   height: (x: number, z: number) => number | undefined;
   /** Columns kept clear of trees and buildings: trails, streets and rivers, with a margin. */
   keepClear: Set<number>;
+  /** Whether a column is on a trail (its surface, not the margin). */
+  onPath: (x: number, z: number) => boolean;
+  /** Which of this terrain's trails a column is on (its index), if any. */
+  pathOf: (x: number, z: number) => number | undefined;
 };
 
 /** What the renderer gives landscape parts to work with. */
@@ -26,6 +30,7 @@ export type Ctx = {
 };
 
 const colKey = (x: number, z: number) => x + z * 100_000;
+const AIR = "minecraft:air";
 const FLIP: Record<Direction, Direction> = { north: "south", south: "north", east: "west", west: "east" };
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const smooth = (t: number) => t * t * (3 - 2 * t);
@@ -223,7 +228,15 @@ export function terrain(ctx: Ctx, part: Of<"terrain">): void {
     heights.push(row);
   }
 
-  ctx.ground.set(part.id, { height: (x, z) => heights[z - z0]?.[x - x0], keepClear });
+  ctx.ground.set(part.id, {
+    height: (x, z) => heights[z - z0]?.[x - x0],
+    keepClear,
+    onPath: (x, z) => trailAt.has(colKey(x, z)),
+    pathOf: (x, z) => {
+      const t = trailAt.get(colKey(x, z));
+      return t ? part.trails.indexOf(t) : undefined;
+    },
+  });
 
   for (let z = z0; z <= z1; z++)
     for (let x = x0; x <= x1; x++) {
@@ -252,6 +265,42 @@ export function terrain(ctx: Ctx, part: Of<"terrain">): void {
       if (water) for (let y = h + 1; y <= water.level; y++) v.set(x, y, z, water.frozen ? water.river.ice : water.river.water);
       if (underSea) for (let y = h + 1; y <= sea.level; y++) v.set(x, y, z, sea.water);
     }
+
+  // Steps: a stair on each trail cell whose neighbour along the trail is one block higher, facing up to it.
+  const UPHILL = [[1, 0, "east"], [-1, 0, "west"], [0, 1, "south"], [0, -1, "north"]] as const;
+  for (let z = z0; z <= z1; z++)
+    for (let x = x0; x <= x1; x++) {
+      const steps = trailAt.get(colKey(x, z))?.steps;
+      if (!steps) continue;
+      const h = heights[z - z0]![x - x0]!;
+      const up = UPHILL.find(([dx, dz]) => trailAt.has(colKey(x + dx, z + dz)) && heights[z + dz - z0]?.[x + dx - x0] === h + 1);
+      if (up && h + 1 < height) v.set(x, h + 1, z, `${steps}[facing=${up[2]},half=bottom]`);
+    }
+
+  // Parapets: where the ground beside a trail falls away 2 blocks or more, a ledge at the trail's level and a wall on it,
+  // joined to its neighbours.
+  const parapets = new Map<string, [number, number, number, string]>();
+  for (let z = z0; z <= z1; z++)
+    for (let x = x0; x <= x1; x++) {
+      const parapet = trailAt.get(colKey(x, z))?.parapet;
+      if (!parapet) continue;
+      const h = heights[z - z0]![x - x0]!;
+      for (let dx = -1; dx <= 1; dx++)
+        for (let dz = -1; dz <= 1; dz++) {
+          const [nx, nz] = [x + dx, z + dz];
+          const nh = heights[nz - z0]?.[nx - x0];
+          // Not over water (a fall into the sea is safe), but over a lower leg of the same zigzag path, yes.
+          if (nh === undefined || nh > h - 2 || h + 1 >= height || (part.sea && nh < part.sea.level)) continue;
+          v.set(nx, h, nz, part.rock);
+          parapets.set(`${nx},${h + 1},${nz}`, [nx, h + 1, nz, parapet]);
+        }
+    }
+  for (const [x, y, z, wall] of parapets.values()) {
+    const link = (dx: number, dz: number) => (parapets.has(`${x + dx},${y},${z + dz}`) ? "low" : "none");
+    const [n, s, e, w] = [link(0, -1), link(0, 1), link(1, 0), link(-1, 0)];
+    const straight = (n === "low" && s === "low" && e === "none" && w === "none") || (e === "low" && w === "low" && n === "none" && s === "none");
+    v.set(x, y, z, `${wall}[east=${e},north=${n},south=${s},up=${straight ? "false" : "true"},waterlogged=false,west=${w}]`);
+  }
 
   // Lamps along trails, alternating sides.
   for (const { t, samples } of trails) {
@@ -354,7 +403,8 @@ export function trees(ctx: Ctx, part: Of<"trees">): void {
         const log = `${part.trunk}[axis=${alongX ? "x" : "z"}]`;
         if (inside(v, bx, y, bz)) set(bx, y, bz, log);
         const [ex, ez] = alongX ? [bx + dir, bz] : [bx, bz + dir];
-        if (hash2(tx, tz + k, design.seed + 10) < 0.5 && inside(v, ex, y + 1, ez)) set(ex, y + 1, ez, log);
+        const tipY = part.tidy ? y : y + 1;
+        if (hash2(tx, tz + k, design.seed + 10) < 0.5 && inside(v, ex, tipY, ez)) set(ex, tipY, ez, log);
       }
       continue;
     }
@@ -377,17 +427,34 @@ export function trees(ctx: Ctx, part: Of<"trees">): void {
   }
 }
 
-/** One cypress, stone pine or olive, `size` blocks tall, standing on the ground at `base`. */
+/** One cypress, stone pine or olive, `size` blocks tall, standing on the ground at `base`; tidied when asked. */
 function warmTree(ctx: Ctx, part: Of<"trees">, tx: number, base: number, tz: number, size: number): void {
+  const leaves = drawWarmTree(ctx, part, tx, base, tz, size);
+  if (!part.tidy) return;
+  // Trim leaves that touch nothing: a crown has no stray leaves floating on their own.
+  const { v } = ctx;
+  for (const [x, y, z] of leaves) {
+    const touching = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].some(
+      ([a, b, c]) => inside(v, x + a!, y + b!, z + c!) && v.get(x + a!, y + b!, z + c!) !== AIR,
+    );
+    if (!touching) ctx.set(x, y, z, AIR);
+  }
+}
+
+function drawWarmTree(ctx: Ctx, part: Of<"trees">, tx: number, base: number, tz: number, size: number): [number, number, number][] {
   const { design, v, set } = ctx;
+  const leaves: [number, number, number][] = [];
   const leaf = (x: number, y: number, z: number) => {
-    if (inside(v, x, y, z) && !ctx.claimed(x, y, z)) set(x, y, z, part.leaves);
+    if (inside(v, x, y, z) && !ctx.claimed(x, y, z)) {
+      set(x, y, z, part.leaves);
+      leaves.push([x, y, z]);
+    }
   };
   const log = (x: number, y: number, z: number, axis = "y") => {
     if (inside(v, x, y, z)) set(x, y, z, axis === "y" ? part.trunk : `${part.trunk}[axis=${axis}]`);
   };
   const top = base + size;
-  for (let y = base + 1; y <= top; y++) if (ctx.claimed(tx, y, tz)) return; // a house or a post is in the way
+  for (let y = base + 1; y <= top; y++) if (ctx.claimed(tx, y, tz)) return leaves; // a house or a post is in the way
   const r = (salt: number) => hash2(tx + salt, tz - salt, design.seed + 61);
   if (part.style === "cypress") {
     // A dark flame: one wide in the middle, a plus shape low down, a single spire at the top.
@@ -399,7 +466,7 @@ function warmTree(ctx: Ctx, part: Of<"trees">, tx: number, base: number, tz: num
       if (fromTop >= 4 && y <= base + Math.ceil(size * 0.55))
         for (const [dx, dz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]] as const) if (r(y) < 0.5) leaf(tx + dx, y, tz + dz);
     }
-    return;
+    return leaves;
   }
   if (part.style === "pine") {
     // A bare trunk that leans a little, then a wide flat crown: a full disc with a narrower one on top.
@@ -418,7 +485,7 @@ function warmTree(ctx: Ctx, part: Of<"trees">, tx: number, base: number, tz: num
         if (d <= (radius - 1) * (radius - 1)) leaf(x + dx, top + 1, z + dz);
         if (d <= 2 && d > 0) log(x + dx, top, z + dz, dx !== 0 ? "x" : "z"); // branches under the crown
       }
-    return;
+    return leaves;
   }
   // Olive: a short, thick trunk that forks, under a rounded crown that does not quite close.
   const trunkTop = base + Math.max(2, Math.round(size * 0.4));
@@ -432,6 +499,7 @@ function warmTree(ctx: Ctx, part: Of<"trees">, tx: number, base: number, tz: num
         if (n <= 1 && hash2(tx + dx * 3 + dy, tz + dz * 5, design.seed + 67) > 0.18) leaf(tx + dx, cy + dy, tz + dz);
       }
   for (let y = trunkTop + 1; y < cy; y++) log(tx, y, tz);
+  return leaves;
 }
 
 export function boulders(ctx: Ctx, part: Of<"boulders">): void {
