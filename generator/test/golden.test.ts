@@ -20,8 +20,12 @@ const GOLDEN: Record<string, string> = {
   "snowy-chalet v5": "b6c5fb74cf1493c6",
   "snowy-chalet v6": "0d64107cfa6b06e9",
   "snowy-chalet v7": "21569ea37293b01b",
+  "snowy-chalet v8": "559a097c5fe1b197",
   "riviera-yacht v1": "8ad935aa09d209a8",
+  "riviera-yacht v2": "0cb255ea3a759f98",
   "orbital-station v1": "888f068c4dc1f877",
+  "orbital-station v2": "a68b3a85fe156ee4",
+  "lighthouse v1": "cab84a8f759fbe3c",
 };
 
 describe("saved designs render exactly as before", () => {
