@@ -78,6 +78,7 @@ A generator that turns a design (JSON) into an AgentCraft-compatible HQ: a struc
 ## Gotchas
 
 - Windows: use PowerShell, and `npm.cmd` instead of `npm` (script execution is disabled for `npm.ps1`). Do not change the execution policy.
+- macOS and Linux: plain `npm` and `./gradlew`. A rename succeeds under a running game there, so `import` and `restore` ask `lsof` whether the world's `session.lock` is open instead of relying on the rename failing.
 - The preview server (`npm.cmd run preview -- --design snowy-chalet`) is a long-running node process. Stopping the npm wrapper does not stop it, and it does not reload TypeScript changes (design JSON edits are picked up live). To restart: close its tab, kill the `node.exe` whose command line contains `cli.ts preview`, confirm port 5173 is free, start it again. A request for `//` used to crash it; that is fixed and tested.
 - Long Bash heredocs that embed Python with backticks and apostrophes have failed to parse. Write the script to a file and run it. Git Bash `/tmp` is not Python's `/tmp`; use a real Windows path.
 - `mod/run/achq-test/` holds generated output: `office.nbt` and `office.schem` (old), a stale `snowy-chalet.schem` from v3, and the current v6 `.nbt`, anchors and `.commands.txt`. The world folder `mod/run/saves/AgentCraft HQ/` holds the placed world. `mod/run` is not tracked by git.

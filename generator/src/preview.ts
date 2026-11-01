@@ -65,8 +65,9 @@ export function startPreview(name: string, version: number | undefined, port: nu
         return;
       }
       const ext = file.slice(file.lastIndexOf("."));
+      const body = readFileSync(file); // before the headers, so a missing file can still be answered with a 500
       res.writeHead(200, { "content-type": TYPES[ext] ?? "application/octet-stream", "cache-control": "no-store" });
-      res.end(readFileSync(file));
+      res.end(body);
     } catch (e) {
       res.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
       res.end(e instanceof Error ? e.message : String(e));

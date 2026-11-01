@@ -154,4 +154,22 @@ describe("setting worlds aside", () => {
       closeSync(handle);
     }
   });
+
+  // macOS and Linux rename a folder under a running game, so the game's open session.lock is checked instead.
+  it.runIf(process.platform !== "win32")("refuses to move a world whose session.lock is open", () => {
+    world(join(saves, "AgentCraft HQ"), "mine");
+    writeFileSync(join(saves, "AgentCraft HQ", "session.lock"), "");
+    const handle = openSync(join(saves, "AgentCraft HQ", "session.lock"), "r");
+    try {
+      expect(() => installWorld(world(join(root, "gen"), "generated"), saves, () => {})).toThrow(/in use\. Close Minecraft/);
+      expect(() => restoreWorld(saves, () => {})).toThrow(/no backup to restore/);
+      world(join(saves, "AgentCraft HQ (backup 2026-01-01 00-00-00)"), "older");
+      expect(() => restoreWorld(saves, () => {})).toThrow(/in use\. Close Minecraft/);
+    } finally {
+      closeSync(handle);
+    }
+    expect(tagOf(join(saves, "AgentCraft HQ"))).toBe("mine");
+    installWorld(world(join(root, "gen"), "generated"), saves, () => {}); // a closed lock is no reason to stop
+    expect(tagOf(join(saves, "AgentCraft HQ"))).toBe("generated");
+  });
 });

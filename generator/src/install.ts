@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -38,8 +39,20 @@ function freeName(dir: string, base: string, label: string): string {
   for (let n = 2; ; n++) if (!existsSync(join(dir, `${name.slice(0, -1)} ${n})`))) return `${name.slice(0, -1)} ${n})`;
 }
 
+/**
+ * Whether a running game has this world open: it holds `session.lock` for as long as the world is loaded.
+ * Only macOS and Linux need asking (through `lsof`), since there a rename succeeds under a running game.
+ */
+function inUse(world: string): boolean {
+  const lock = join(world, "session.lock");
+  if (process.platform === "win32" || !existsSync(lock)) return false;
+  const r = spawnSync("lsof", ["-t", "--", lock], { encoding: "utf8" });
+  return r.status === 0 && r.stdout.trim() !== "";
+}
+
 /** Rename, explaining the usual cause when it fails: the game has the world open. */
 function move(from: string, to: string): void {
+  if (inUse(from)) throw new Error(`could not move '${from}': it is in use. Close Minecraft and try again.`);
   try {
     renameSync(from, to);
   } catch (e) {

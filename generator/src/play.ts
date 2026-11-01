@@ -210,7 +210,7 @@ export async function play(design: Design, opts: PlayOptions): Promise<void> {
   const { say } = opts;
   await requireClosed("the anchors file is only read when the world loads.", opts.restart, say);
   if (!existsSync(WORLD_DIR)) {
-    throw new Error(`no HQ world at ${WORLD_DIR}. Start the game once to create it (cd mod; gradlew.bat runClient), close it, and run this again.`);
+    throw new Error(`no HQ world at ${WORLD_DIR}. Start the game once to create it (cd mod; ${process.platform === "win32" ? "gradlew.bat" : "./gradlew"} runClient), close it, and run this again.`);
   }
 
   say(`writing '${design.name}' v${design.version} at ${opts.origin.join(",")}...`);
