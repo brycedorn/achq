@@ -130,9 +130,8 @@ export function deckhouse(ctx: Ctx, part: Deckhouse): void {
         }
         set(x, y, z, windowRow(y) ? part.windows!.block : part.wall);
       }
-  // Tidy: where the wall steps diagonally round a curve or a raked nose, fill the outside corner, so the wall is joined
+  // Where the wall steps diagonally round a curve or a raked nose, fill the outside corner, so the wall is joined
   // face to face, with no pieces (of glass, say) touching only at their corners, and nothing inside it moves.
-  if (!part.tidy) return;
   const edge = (s: number, t: number, y: number) => solid(s, t, y) && SIDES.some(([ds, dt]) => !solid(s + ds, t + dt, y));
   for (let y = part.y; y <= top; y++)
     for (let s = Math.floor(part.from); s <= Math.ceil(part.to); s++)

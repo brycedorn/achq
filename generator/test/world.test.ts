@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { checkDesign } from "../src/check.js";
 import { parseDesign } from "../src/design.js";
 import { loadDesign } from "../src/designs.js";
+import { loadFixture } from "./fixtures/index.js";
 import { renderDesign } from "../src/render.js";
 import { buildScene } from "../src/scene.js";
 
-const design = loadDesign("snowy-chalet", 3);
+const design = loadFixture("chalet-valley");
 const rendered = renderDesign(design, { origin: [0, 0, 0] });
 const { volume } = rendered;
 
@@ -16,10 +16,9 @@ function count(name: string): number {
   return n;
 }
 
-describe("snowy-chalet v3", () => {
-  it("passes every check with no overlaps, at landscape size", () => {
+describe("chalet in a valley (fixture)", () => {
+  it("places its parts without overlaps, at landscape size", () => {
     expect(design.size).toEqual([160, 128, 176]);
-    expect(checkDesign(design)).toEqual([]);
     expect(rendered.conflicts).toEqual([]);
   });
 

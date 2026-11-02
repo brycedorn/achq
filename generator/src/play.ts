@@ -213,7 +213,7 @@ export async function play(design: Design, opts: PlayOptions): Promise<void> {
     throw new Error(`no HQ world at ${WORLD_DIR}. Start the game once to create it (cd mod; ${process.platform === "win32" ? "gradlew.bat" : "./gradlew"} runClient), close it, and run this again.`);
   }
 
-  say(`writing '${design.name}' v${design.version} at ${opts.origin.join(",")}...`);
+  say(`writing '${design.name}' at ${opts.origin.join(",")}...`);
   const out = writeOutputs(design, opts.origin, OUT_DIR);
 
   say("copying it into the HQ world...");
@@ -239,7 +239,7 @@ export async function play(design: Design, opts: PlayOptions): Promise<void> {
     const status = unchanged ? "same  " : reply["success"] === false ? "FAILED" : "ok    ";
     say(`  ${status} ${cmd}  (${secs} s)${messages.length ? `  ${messages.join(" | ")}` : ""}`);
   }
-  if (opts.screenshot) for (const cam of opts.cameras ?? [undefined]) await screenshot(bridge, out.layout, `${design.name}-v${design.version}`, say, cam);
+  if (opts.screenshot) for (const cam of opts.cameras ?? [undefined]) await screenshot(bridge, out.layout, design.name, say, cam);
   const spawnAt = out.layout.anchors["spawn"];
   if (spawnAt) await bridge.request("dev.command", { cmd: `/tp @s ${spawnAt.x} ${spawnAt.y} ${spawnAt.z}` }, 30_000);
   bridge.close();
@@ -255,8 +255,8 @@ export async function playSave(design: Design, opts: PlayOptions): Promise<void>
   const { say } = opts;
   await requireClosed("the world folder is about to be swapped.", opts.restart, say);
 
-  say(`writing the world save for '${design.name}' v${design.version}...`);
-  const result = writeWorld(design, opts.origin, join(WORLDS_OUT, `${design.name}-v${design.version}`));
+  say(`writing the world save for '${design.name}'...`);
+  const result = writeWorld(design, opts.origin, join(WORLDS_OUT, design.name));
   say(`  ${result.chunks} chunks in ${result.dir}`);
 
   mkdirSync(SAVES_DIR, { recursive: true });
@@ -266,7 +266,7 @@ export async function playSave(design: Design, opts: PlayOptions): Promise<void>
   const bridge = await launch(say);
   const anchors = await bridge.request("dev.command", { cmd: "/agentcraft anchors" }, 30_000);
   say(`  AgentCraft: ${((anchors["messages"] as string[] | undefined) ?? []).slice(0, 1).join("")}`);
-  if (opts.screenshot) for (const cam of opts.cameras ?? [undefined]) await screenshot(bridge, result.layout, `${design.name}-v${design.version}-save`, say, cam);
+  if (opts.screenshot) for (const cam of opts.cameras ?? [undefined]) await screenshot(bridge, result.layout, `${design.name}-save`, say, cam);
   bridge.close();
   say("done: the game is running in the generated world. Close it, then run 'play --restore' to get your world back.");
 }

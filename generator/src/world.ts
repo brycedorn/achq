@@ -279,7 +279,7 @@ export function writeWorld(design: Design, origin: readonly [number, number, num
 
   writeFileSync(join(dir, ANCHORS_FILE), serializeLayout(layout));
   // AgentCraft treats a world without this marker as new and resets its time, weather and spawn.
-  writeFileSync(join(dir, "agentcraft-world.json"), `${JSON.stringify({ createdBy: "achq", design: design.name, version: design.version })}\n`);
+  writeFileSync(join(dir, "agentcraft-world.json"), `${JSON.stringify({ createdBy: "achq", design: design.name })}\n`);
   return { dir, chunks: chunkCount, regions: regions.size, layout };
 }
 

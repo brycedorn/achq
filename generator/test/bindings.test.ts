@@ -17,7 +17,7 @@ function wired(extra: PartInput[] = []) {
       ...office.parts.map((p) =>
         p.id === "desks" ? { ...p, screen: { block: MONITOR, width: 3, height: 2 }, lamp: "agentcraft:status_lamp[status=idle]" } : p.id === "library" ? { ...p, block: "agentcraft:memory_archive[facing=north]", binding: "shared" } : p,
       ),
-      { type: "device", id: "merge-lamp", at: [15, 4, 7], block: "agentcraft:status_lamp[status=off]", binding: "merge" },
+      { type: "device", id: "merge-lamp", at: [15, 1, 7], block: "agentcraft:status_lamp[status=off]", binding: "merge" },
       ...extra,
     ],
   });
@@ -64,7 +64,7 @@ describe("bound AgentCraft blocks", () => {
 
   it("binds stations and devices", () => {
     expect(volume.dataAt(3, 1, 6)).toEqual({ id: "agentcraft:memory_archive", binding: "shared" });
-    expect(volume.dataAt(15, 4, 7)).toEqual({ id: "agentcraft:status_lamp", binding: "merge" });
+    expect(volume.dataAt(15, 1, 7)).toEqual({ id: "agentcraft:status_lamp", binding: "merge" });
   });
 
   it("still passes every check", () => {
@@ -102,8 +102,8 @@ describe("bound AgentCraft blocks", () => {
   });
 });
 
-describe("snowy-chalet v7", () => {
-  const chalet = loadDesign("snowy-chalet", 7);
+describe("snowy-chalet", () => {
+  const chalet = loadDesign("snowy-chalet");
   const { volume: v, layout: l } = renderDesign(chalet, { origin: [0, 0, 0] });
   const bindings = new Map<string, number>();
   for (const [x, y, z] of v.blocks()) {

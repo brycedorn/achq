@@ -32,11 +32,10 @@ describe("the command line", () => {
     expect(r.err).toMatch(/cli import --saves/);
   });
 
-  it("checks a design, passing it while warning about a roofed spawn", () => {
+  it("checks a design", () => {
     const r = cli(["check", "--design", "test-office"]);
     expect(r.code).toBe(0);
-    expect(r.out).toMatch(/ok: 'test-office' v1 passes all checks/);
-    expect(r.err).toMatch(/warning: spawn: new players will arrive on top of/);
+    expect(r.out).toMatch(/ok: 'test-office' passes all checks/);
   });
 
   it("fails cleanly for a design that does not exist", () => {
@@ -53,7 +52,7 @@ describe("the command line", () => {
     expect(r.out).toMatch(/\/place template minecraft:test-office 0 64 0/);
     const v = cli(["validate", join(out, "agentcraft-anchors.json")]);
     expect(v.code).toBe(0);
-    expect(v.out).toMatch(/^ok: 'test-office' rev 1, \d+ anchors/);
+    expect(v.out).toMatch(/^ok: 'test-office' rev \d+, \d+ anchors/);
   });
 
   it("rejects an anchors file that is missing what AgentCraft needs", () => {

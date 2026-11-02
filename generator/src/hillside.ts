@@ -120,16 +120,16 @@ function house(ctx: Ctx, part: Hillside, f: Frame, len: number, dep: number, flo
     if (!ctx.claimed(x, y, z) && (g.height(x, z) ?? -1) < y) set(x, y, z, state);
   };
   const ground = (u: number, w: number) => g.height(...f.at(u, w)) ?? floor;
-  /** A window in the wall at (u, w), looking out over (ou, ow): when tidy, only where that is open air, not the hillside. */
+  /** A window in the wall at (u, w), looking out over (ou, ow): only where that is open air, not the hillside. */
   const glaze = (u: number, w: number, y: number, ou: number, ow: number) => {
     const [ox, oz] = f.at(ou, ow);
-    if (part.tidy && ((g.height(ox, oz) ?? -1) >= y || ctx.claimed(ox, y, oz))) return;
+    if ((g.height(ox, oz) ?? -1) >= y || ctx.claimed(ox, y, oz)) return;
     put(u, w, y, inner.glass);
   };
-  /** A pot outside the house: when tidy, only where it stands on the ground or on something. */
+  /** A pot outside the house: only where it stands on the ground or on something. */
   const pot = (u: number, w: number, y: number, state: string) => {
     const [x, z] = f.at(u, w);
-    if (part.tidy && (g.height(x, z) ?? -1) !== y - 1 && !ctx.claimed(x, y - 1, z)) return;
+    if ((g.height(x, z) ?? -1) !== y - 1 && !ctx.claimed(x, y - 1, z)) return;
     putFree(u, w, y, state);
   };
   const wall = pick(part.walls, 10);
@@ -156,6 +156,15 @@ function house(ctx: Ctx, part: Hillside, f: Frame, len: number, dep: number, flo
           put(u, w, y, quoins && corner ? part.stone : wall);
         } else put(u, w, y, (y - floor) % 4 === 0 ? inner.floor : AIR);
       }
+  // The hillside kept below the eaves for two blocks round, so no one walks off the slope onto the roof.
+  for (let u = -2; u < len + 2; u++)
+    for (let w = -2; w < dep + 2; w++) {
+      if (u >= 0 && u < len && w >= 0 && w < dep) continue;
+      const [x, z] = f.at(u, w);
+      const h = g.height(x, z);
+      if (h === undefined || h < wallTop || g.onPath(x, z)) continue;
+      for (let y = wallTop; y <= h; y++) if (!ctx.claimed(x, y, z)) set(x, y, z, AIR);
+    }
 
   // The front door, a stone lintel, and the way up to it.
   const doorU = 1 + Math.floor(r(15) * (len - 2));
@@ -227,8 +236,8 @@ function house(ctx: Ctx, part: Hillside, f: Frame, len: number, dep: number, flo
         put(u, w, wallTop + 1, part.fence);
         put(u, w, wallTop + 2, part.fence);
       }
-      // The vine canopy, patchy unless tidy (a patchy one can leave a leaf on its own in the air).
-      for (let u = a; u <= b; u++) for (let w = 1; w <= dep - 2; w++) if (part.tidy || r(21 + u * 7 + w) < 0.8) put(u, w, wallTop + 3, part.flowers);
+      // The vine canopy, whole (a patchy one can leave a leaf on its own in the air).
+      for (let u = a; u <= b; u++) for (let w = 1; w <= dep - 2; w++) put(u, w, wallTop + 3, part.flowers);
       const tu = Math.floor((a + b) / 2);
       put(tu, Math.floor(dep / 2), wallTop + 1, inner.table);
       put(tu - 1, Math.floor(dep / 2), wallTop + 1, `${inner.chair}[facing=${f.minusU},half=bottom]`);
@@ -335,11 +344,9 @@ function church(ctx: Ctx, part: Hillside, c: NonNullable<Hillside["church"]>, ta
   for (let w = 3; w < dep - 4; w += 2)
     for (const u of [1, 2, len - 3, len - 2]) put(u, w, floor + 1, `${part.interior.chair}[facing=${FLIP[f.inward]},half=bottom]`);
   put(half, Math.floor(dep / 2), top, part.interior.light);
-  // Tidy: the lamp hangs on a chain from the roof, not from nothing.
-  if (part.tidy) {
-    const [lx, lz] = f.at(half, Math.floor(dep / 2));
-    for (let y = top + 1; y < top + 12 && !ctx.claimed(lx, y, lz); y++) ctx.set(lx, y, lz, "minecraft:iron_chain[axis=y]");
-  }
+  // The lamp hangs on a chain from the roof, not from nothing.
+  const [lx, lz] = f.at(half, Math.floor(dep / 2));
+  for (let y = top + 1; y < top + 12 && !ctx.claimed(lx, y, lz); y++) ctx.set(lx, y, lz, "minecraft:iron_chain[axis=y]");
   // The bell tower beside the front: open arches at the top, a bell, a low pyramid cap.
   const [t0, t1] = [len + 1, len + 5];
   const towerTop = floor + 16;
@@ -375,15 +382,14 @@ export function beach(ctx: Ctx, part: Beach): void {
     for (let y = h + 1; y <= h + 3; y++) set(x, y, z, part.pole);
     for (let dx = -1; dx <= 1; dx++)
       for (let dz = -1; dz <= 1; dz++) {
-        // The corners droop a block, unless tidy: then the canopy is flat, every piece joined to the next.
-        const y = dx !== 0 && dz !== 0 && !part.tidy ? h + 3 : h + 4;
+        // A flat canopy, every piece joined to the next.
+        const y = h + 4;
         if (free(x + dx, y, z + dz)) set(x + dx, y, z + dz, (dx + dz) % 2 === 0 ? color : "minecraft:white_wool");
       }
     for (const dx of [-2, 2]) {
-      const bh = g.height(x + dx, z);
-      if (bh === undefined) continue;
+      if (g.height(x + dx, z) === undefined) continue;
       for (const dz of [0, 1]) {
-        const h2 = part.tidy ? g.height(x + dx, z + dz) : bh; // tidy: each half on the sand under it
+        const h2 = g.height(x + dx, z + dz); // each half on the sand under it
         if (h2 !== undefined && free(x + dx, h2 + 1, z + dz)) set(x + dx, h2 + 1, z + dz, part.bed);
       }
     }
@@ -394,7 +400,10 @@ export function beach(ctx: Ctx, part: Beach): void {
     const color = part.boatColors[i % part.boatColors.length]!;
     const [sx, sz] = { north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0] }[dir] as [number, number];
     const [tx, tz] = [sz, sx];
-    const y = h + 1;
+    // Resting on the lowest sand under it, settled into the rest, so no part of the hull stands over a gap.
+    let low = h;
+    for (let s = -2; s <= 2; s++) for (const t of [-1, 0, 1]) low = Math.min(low, g.height(x + sx * s + tx * t, z + sz * s + tz * t) ?? h);
+    const y = low + 1;
     for (let s = -2; s <= 2; s++) {
       const end = Math.abs(s) === 2;
       const at = (t: number): [number, number] => [x + sx * s + tx * t, z + sz * s + tz * t];

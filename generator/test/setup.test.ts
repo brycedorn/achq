@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { loadDesign } from "../src/designs.js";
+import { loadFixture } from "./fixtures/index.js";
 import { gunzipSync } from "node:zlib";
 import { parse, simplify } from "prismarine-nbt";
 import { renderDesign } from "../src/render.js";
@@ -16,7 +17,7 @@ describe("setupCommands", () => {
   });
 
   it("splits a big area into force-loads of at most 16 x 16 chunks and applies the atmosphere", () => {
-    const world = loadDesign("snowy-chalet", 6);
+    const world = loadDesign("snowy-chalet");
     const commands = setupCommands(world, [40, 64, 40]);
     const loads = commands.filter((c) => c.startsWith("/forceload add"));
     expect(loads.length).toBe(6); // chunks 2 to 32 east (31) and 2 to 34 south (33): two tiles by three
@@ -39,13 +40,13 @@ describe("setupCommands", () => {
   });
 
   it("is silent about atmosphere when a design has none", () => {
-    const commands = setupCommands(loadDesign("snowy-chalet", 3), [0, 64, 0]);
+    const commands = setupCommands(loadFixture("chalet-valley"), [0, 64, 0]);
     expect(commands.some((c) => c.startsWith("/fillbiome") || c.startsWith("/weather") || c.startsWith("/time"))).toBe(false);
   });
 });
 
 describe("hqBox", () => {
-  const chalet = loadDesign("snowy-chalet", 7);
+  const chalet = loadDesign("snowy-chalet");
   const origin = [40, 64, 40] as const;
   const { volume, layout } = renderDesign(chalet, { origin });
   const box = hqBox(layout, origin, chalet.size)!;

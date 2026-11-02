@@ -9,7 +9,7 @@ const SPRUCE = { trunk: "minecraft:spruce_log", leaves: "minecraft:spruce_leaves
 /** A small landscape: flat ground at layer 20 with a river across it, a trail along it, and trees, rocks and a village. */
 function small(extra: Record<string, unknown> = {}) {
   return parseDesign({
-    name: "t", version: 1, seed: 2, size: [80, 60, 80], shell: { kind: "none" },
+    name: "t", seed: 2, size: [80, 60, 80], shell: { kind: "none" },
     parts: [
       {
         type: "terrain", id: "ground", x: [0, 79], z: [0, 79], grid: [[20, 20], [20, 20]],
@@ -64,7 +64,7 @@ describe("rivers", () => {
     const slope = (rivers: unknown[]) =>
       renderDesign(
         parseDesign({
-          name: "t", version: 1, seed: 2, size: [40, 90, 80], shell: { kind: "none" },
+          name: "t", seed: 2, size: [40, 90, 80], shell: { kind: "none" },
           parts: [{
             type: "terrain", id: "ground", x: [0, 39], z: [0, 79], grid: [[70, 70], [30, 30], [20, 20]], peaks: [{ at: [20, 50], height: 6, radius: 6 }],
             trails: [{ points: [[0, 40], [39, 40]], y: [[0, 27], [1, 27]], width: 3, margin: 2, surface: "minecraft:gravel" }],
@@ -117,9 +117,9 @@ describe("trails", () => {
 
   describe("across a valley", () => {
     // Down one side of a valley and up the other: a level profile would carry the path across on an embankment.
-    const valley = (y?: unknown, natural?: boolean) =>
+    const valley = (y?: unknown) =>
       parseDesign({
-        name: "t", version: 1, seed: 2, size: [40, 60, 80], shell: { kind: "none" }, natural,
+        name: "t", seed: 2, size: [40, 60, 80], shell: { kind: "none" },
         parts: [{
           type: "terrain", id: "ground", x: [0, 39], z: [0, 79], grid: [[40, 40], [12, 12], [40, 40]],
           trails: [{ points: [[20, 2], [20, 77]], ...(y ? { y } : {}), width: 3, margin: 3, surface: "minecraft:gravel" }],
@@ -144,20 +144,17 @@ describe("trails", () => {
       const r = renderDesign(valley(level), { origin: [0, 0, 0] });
       expect(r.raised(20, 40)).toBeGreaterThan(20);
       const banks = (problems: { where: string }[]) => problems.filter((p) => p.where === "embankment");
-      expect(banks(checkDesign(valley(level, true)))).toHaveLength(1);
-      const warnings: { where: string; message: string }[] = [];
-      expect(banks(checkDesign(valley(level), warnings))).toEqual([]); // saved before the check: a warning
-      expect(banks(warnings)).toHaveLength(1);
-      expect(banks(checkDesign(valley(undefined, true)))).toEqual([]);
+      expect(banks(checkDesign(valley(level)))).toHaveLength(1);
+      expect(banks(checkDesign(valley()))).toEqual([]);
     });
 
     it("are walked from end to end and back, which takes a stair on every rise", () => {
       const r = renderDesign(valley(), { origin: [0, 0, 0] });
       let top = 59;
       while (top > 0 && r.volume.get(20, top, 2) === "minecraft:air") top--;
-      const walked = (steps: boolean, trails: boolean, warnings?: { where: string; message: string }[]) => {
+      const walked = (steps: boolean) => {
         const d = parseDesign({
-          name: "t", version: 1, seed: 2, size: [40, 60, 80], floorY: top + 1, shell: { kind: "none" }, walk: { to: [], trails },
+          name: "t", seed: 2, size: [40, 60, 80], floorY: top + 1, shell: { kind: "none" }, walk: { to: [] },
           parts: [
             {
               type: "terrain", id: "ground", x: [0, 39], z: [0, 79], grid: [[40, 40], [12, 12], [40, 40]],
@@ -167,13 +164,10 @@ describe("trails", () => {
             { type: "spot", id: "spawn", anchor: "spawn", at: [20, 2], look: "south" },
           ],
         });
-        return checkDesign(d, warnings).filter((p) => /trail 1 (start|end)$/.test(p.where));
+        return checkDesign(d).filter((p) => /trail 1 (start|end)$/.test(p.where));
       };
-      expect(walked(false, true).map((p) => p.message)).toEqual([expect.stringContaining("without jumping")]);
-      const warnings: { where: string; message: string }[] = [];
-      expect(walked(false, false, warnings)).toEqual([]); // saved before the check: a warning
-      expect(warnings.filter((p) => /trail 1 end$/.test(p.where))).toHaveLength(1);
-      expect(walked(true, true)).toEqual([]);
+      expect(walked(false).map((p) => p.message)).toEqual([expect.stringContaining("without jumping")]);
+      expect(walked(true)).toEqual([]);
     });
   });
 });
@@ -211,7 +205,7 @@ describe("village (varied style)", () => {
 describe("ellipse flats and the elevation profile", () => {
   it("level an ellipse and blend out of it", () => {
     const d = parseDesign({
-      name: "e", version: 1, seed: 1, size: [80, 60, 80], shell: { kind: "none" },
+      name: "e", seed: 1, size: [80, 60, 80], shell: { kind: "none" },
       parts: [{
         type: "terrain", id: "ground", x: [0, 79], z: [0, 79], grid: [[40, 40], [40, 40]],
         flats: [{ x: [20, 60], z: [20, 60], y: 25, margin: 8, shape: "ellipse", ripple: 0 }],
@@ -231,20 +225,11 @@ describe("ellipse flats and the elevation profile", () => {
   });
 });
 
-describe("snowy-chalet v5", () => {
-  const big = loadDesign("snowy-chalet", 5);
-  it("is a landscape-sized world that passes every check", () => {
-    expect(big.size).toEqual([480, 176, 512]);
-    expect(checkDesign(big)).toEqual([]);
-  });
-});
-
-describe("snowy-chalet v6", () => {
-  const world = loadDesign("snowy-chalet", 6);
+describe("snowy-chalet", () => {
+  const world = loadDesign("snowy-chalet");
   const { volume } = renderDesign(world, { origin: [0, 0, 0] });
 
   it("is the chalet on a shoulder above a river valley, and passes every check", () => {
-    expect(world.version).toBe(6);
     expect(world.floorY).toBe(72);
     expect(checkDesign(world)).toEqual([]);
   });

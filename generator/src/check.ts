@@ -68,7 +68,7 @@ function embankments(raised: (x: number, z: number) => number, width: number, le
   return out;
 }
 
-export function checkDesign(design: Design, warnings?: DesignProblem[]): DesignProblem[] {
+export function checkDesign(design: Design): DesignProblem[] {
   const problems: DesignProblem[] = [];
   const problem = (where: string, message: string): void => {
     problems.push({ where, message });
@@ -86,13 +86,9 @@ export function checkDesign(design: Design, warnings?: DesignProblem[]): DesignP
 
   for (const c of conflicts) problem(c.second, `overwrites a block of part '${c.first}' at ${c.cell.join(", ")}`);
 
-  // The land looks like land: no trail or river carried on an embankment. Problems for designs that ask for this
-  // check, warnings for those saved before it.
-  if (design.natural || warnings) {
-    const report = (where: string, message: string) => (design.natural ? problem(where, message) : warnings!.push({ where, message }));
-    for (const bank of embankments(rendered.raised, volume.width, volume.length))
-      report("embankment", `the ground is built up ${bank.most} blocks above the land at ${bank.x}, ${bank.z} (${bank.columns} columns): a trail or river there stands on an embankment no landscape has. Leave out its \`y\` so it follows the ground, or move it`);
-  }
+  // The land looks like land: no trail or river carried on an embankment.
+  for (const bank of embankments(rendered.raised, volume.width, volume.length))
+    problem("embankment", `the ground is built up ${bank.most} blocks above the land at ${bank.x}, ${bank.z} (${bank.columns} columns): a trail or river there stands on an embankment no landscape has. Leave out its \`y\` so it follows the ground, or move it`);
 
   const walk = new Walk(volume);
   const spots = Object.entries(layout.anchors).filter(([name]) => isSpot(name));
@@ -184,15 +180,15 @@ export function checkDesign(design: Design, warnings?: DesignProblem[]): DesignP
 
   // Minecraft puts a new player on the first block with a full top face looking down from the sky over the spawn
   // (`PlayerSpawnFinder.getLevelRespawnPos`), not at the spawn itself: a roof over it means arriving on the roof.
-  // Panes, bars, slabs and other partial blocks let the search fall through. A warning, not an error.
-  if (warnings && spawn) {
+  // Panes, bars, slabs and other partial blocks let the search fall through.
+  if (spawn) {
     const [sx, sy, sz] = [Math.floor(spawn.x), Math.floor(spawn.y + 0.01), Math.floor(spawn.z)];
     for (let y = volume.height - 1; y >= sy; y--) {
       const state = volume.get(sx, y, sz);
       if (state.includes("water") || state.includes("lava")) break;
       if (fullTop(state)) {
         if (y + 1 !== sy)
-          warnings.push({ where: "spawn", message: `new players will arrive on top of ${state} at y ${y + 1}, not at the spawn: open the column above it, or use panes, bars or slabs there` });
+          problem("spawn", `new players will arrive on top of ${state} at y ${y + 1}, not at the spawn: open the column above it, or use panes, bars or slabs there`);
         break;
       }
     }
@@ -211,14 +207,11 @@ export function checkDesign(design: Design, warnings?: DesignProblem[]): DesignP
   }
 
   // A player must be able to walk it too: from the spawn to every spot and every place the design names, and back,
-  // without jumping. Problems for designs that ask for this check, warnings for those saved before it.
-  if (spawn && (design.walk || warnings)) {
-    const report = (where: string, message: string) => (design.walk ? problem(where, message) : warnings!.push({ where, message }));
+  // without jumping.
+  if (spawn) {
     const places = new Map<string, readonly [number, number, number]>([...targets, ...seats]);
     for (const t of design.walk?.to ?? []) places.set(t.name, t.at);
-    // Both ends of every trail, standing on its surface (or the stair on it), not on a roof built over it. Problems
-    // with `walk.trails`, warnings for designs saved before it.
-    const ends = new Set<string>();
+    // Both ends of every trail, standing on its surface (or the stair on it), not on a roof built over it.
     for (const part of design.parts)
       if (part.type === "terrain")
         part.trails.forEach((t, i) => {
@@ -227,9 +220,7 @@ export function checkDesign(design: Design, warnings?: DesignProblem[]): DesignP
             const [x, z] = [Math.round(px), Math.round(pz)];
             let y = volume.height - 1;
             while (y >= 0 && !own.has(parseState(volume.get(x, y, z)).name)) y--;
-            if (y < 0) continue;
-            ends.add(`${part.id} trail ${i + 1} ${end}`);
-            places.set(`${part.id} trail ${i + 1} ${end}`, [x, y + 1, z]);
+            if (y >= 0) places.set(`${part.id} trail ${i + 1} ${end}`, [x, y + 1, z]);
           }
         });
     // The walk keeps to the HQ and the places named, with room round them.
@@ -242,17 +233,16 @@ export function checkDesign(design: Design, warnings?: DesignProblem[]): DesignP
       Math.min(volume.width - 1, Math.max(...xs) + pad), Math.min(volume.length - 1, Math.max(...zs) + pad),
     ]);
     const start = player.standAt(...cellOf(spawn));
-    if (!start) report("spawn", "a player has nowhere to stand at the spawn");
+    if (!start) problem("spawn", "a player has nowhere to stand at the spawn");
     else {
       const { there, back } = player.explore(start);
       for (const [name, [x, y, z]] of places) {
-        const say = (message: string) => (ends.has(name) && !design.walk?.trails ? warnings?.push({ where: name, message }) : report(name, message));
         // On the spot; at a seat, on it or beside it.
         const near = seats.has(name) ? [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]] : [[0, 0]];
         const at = [...there.entries()].filter(([, s]) => near.some(([dx, dz]) => PlayerWalk.over(s, x + dx!, y, z + dz!))).map(([k]) => k);
         if (at.some((k) => back.has(k))) continue;
         if (at.length > 0) {
-          say(`a player can walk from the spawn to ${x}, ${y}, ${z} but not back without jumping`);
+          problem(name, `a player can walk from the spawn to ${x}, ${y}, ${z} but not back without jumping`);
           continue;
         }
         // Where the walk got closest, to show where it is cut off.
@@ -263,7 +253,7 @@ export function checkDesign(design: Design, warnings?: DesignProblem[]): DesignP
           const d = Math.hypot(bx - x, (by - y) * 2, bz - z);
           if (d < best) [best, closest] = [d, [bx, by, bz]];
         }
-        say(`a player cannot walk from the spawn to ${x}, ${y}, ${z} without jumping; the walk gets closest at ${closest!.join(", ")}`);
+        problem(name, `a player cannot walk from the spawn to ${x}, ${y}, ${z} without jumping; the walk gets closest at ${closest!.join(", ")}`);
       }
 
       // Guarded drops: wherever a player can walk off a built floor or a path into a fall that hurts, there must be a
@@ -320,11 +310,11 @@ export function checkDesign(design: Design, warnings?: DesignProblem[]): DesignP
         }
         const fall = Math.max(...stretch.map((e) => edges.get(e)!));
         const deep = Number.isFinite(fall) ? `${Math.floor(fall)} blocks` : "nothing below";
-        report("drop", `an unguarded drop (${deep}) beside ${stretch[0]!.split(",").join(", ")}${stretch.length > 1 ? ` and ${stretch.length - 1} more blocks along the edge` : ""}: add a railing or a wall`);
+        problem("drop", `an unguarded drop (${deep}) beside ${stretch[0]!.split(",").join(", ")}${stretch.length > 1 ? ` and ${stretch.length - 1} more blocks along the edge` : ""}: add a railing or a wall`);
       }
 
       // What a person expects without thinking: paths lead somewhere, doors open onto somewhere, nothing floats.
-      for (const p of senseChecks(design, rendered, player, there)) report(p.where, p.message);
+      for (const p of senseChecks(design, rendered, player, there)) problem(p.where, p.message);
     }
   }
 

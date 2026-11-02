@@ -3,8 +3,8 @@ import { checkDesign } from "../src/check.js";
 import { loadDesign } from "../src/designs.js";
 import { renderDesign } from "../src/render.js";
 
-describe("lighthouse v1", () => {
-  const design = loadDesign("lighthouse", 1);
+describe("lighthouse", () => {
+  const design = loadDesign("lighthouse");
 
   it("passes every check, walked as a player: every room, the gallery and the jetty, there and back", () => {
     expect(design.walk?.to.map((t) => t.name)).toEqual(["gallery", "jetty"]);

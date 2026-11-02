@@ -5,7 +5,7 @@ import { parseDesign, type PartInput } from "../src/design.js";
 /** A grass yard (natural ground) with a stone house in it (walls at x 10 and 14, z 4 to 10), the spawn at (3, 3). */
 const yard = (parts: PartInput[]) =>
   parseDesign({
-    name: "yard", version: 1, size: [20, 10, 16], floorY: 2, shell: { kind: "none" }, walk: { to: [{ name: "corner", at: [18, 3, 14] }] },
+    name: "yard", size: [20, 10, 16], floorY: 2, shell: { kind: "none" }, walk: { to: [{ name: "corner", at: [18, 3, 14] }] },
     parts: [
       { type: "terrain", id: "ground", x: [0, 19], z: [0, 15], grid: [[2, 2], [2, 2]], surface: "minecraft:grass_block", rock: "minecraft:stone", base: "minecraft:stone" },
       { type: "spot", id: "spawn", anchor: "spawn", at: [3, 3], look: "south" },

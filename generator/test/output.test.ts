@@ -41,7 +41,7 @@ describe("writeOutputs", () => {
 
   it("leaves the schematic out of a design too big for one", () => {
     const big = parseDesign({
-      name: "big", version: 1, size: [170, 150, 170], shell: { kind: "none" },
+      name: "big", size: [170, 150, 170], shell: { kind: "none" },
       parts: [{ type: "box", id: "slab", from: [0, 0, 0], to: [169, 0, 169], block: "minecraft:stone" }],
     });
     const bigFiles = writeOutputs(big, [0, 0, 0], mkdtempSync(join(tmpdir(), "achq-big-")));

@@ -9,7 +9,7 @@ import { renderDesign } from "../src/render.js";
 import { HQ_LEVEL_NAME, writeWorld } from "../src/world.js";
 
 const space = (parts: PartInput[], extra: Record<string, unknown> = {}) =>
-  parseDesign({ name: "space", version: 1, size: [40, 30, 40], floorY: 10, shell: { kind: "none" }, parts, ...extra });
+  parseDesign({ name: "space", size: [40, 30, 40], floorY: 10, shell: { kind: "none" }, parts, ...extra });
 
 describe("cylinder", () => {
   const { volume: v, conflicts } = renderDesign(

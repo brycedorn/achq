@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkDesign, type DesignProblem } from "../src/check.js";
+import { checkDesign } from "../src/check.js";
 import { parseDesign, type PartInput } from "../src/design.js";
 import { encodeNbt, byte, compound, float, int, intArray, list, long, str, type Nbt } from "../src/nbt.js";
 import { parse, simplify } from "prismarine-nbt";
@@ -7,18 +7,14 @@ import { parse, simplify } from "prismarine-nbt";
 /** A room with a floor at layer 2, a spawn at (5, 5), and whatever else a test adds. */
 const room = (parts: PartInput[]) =>
   parseDesign({
-    name: "room", version: 1, size: [12, 12, 12], floorY: 2, shell: { kind: "none" },
+    name: "room", size: [12, 12, 12], floorY: 2, shell: { kind: "none" },
     parts: [
       { type: "box", id: "floor", from: [0, 2, 0], to: [11, 2, 11], block: "minecraft:stone" },
       { type: "spot", id: "spawn", anchor: "spawn", at: [5, 5], look: "south" },
       ...parts,
     ],
   });
-const spawnWarnings = (parts: PartInput[]) => {
-  const warnings: DesignProblem[] = [];
-  checkDesign(room(parts), warnings);
-  return warnings.filter((w) => w.where === "spawn");
-};
+const spawnWarnings = (parts: PartInput[]) => checkDesign(room(parts)).filter((p) => p.where === "spawn");
 
 describe("the roofed-spawn warning", () => {
   it("warns when a roof would put new players on top of it", () => {
@@ -41,10 +37,6 @@ describe("the roofed-spawn warning", () => {
   it("treats a top slab or an upside-down stair as a roof", () => {
     for (const lid of ["minecraft:smooth_quartz_slab[type=top]", "minecraft:smooth_quartz_stairs[facing=north,half=top]"])
       expect(spawnWarnings([{ type: "box", id: "lid", from: [5, 7, 5], to: [5, 7, 5], block: lid }])).toHaveLength(1);
-  });
-
-  it("is only collected when asked for: plain checks stay as they were", () => {
-    expect(checkDesign(room([{ type: "box", id: "roof", from: [0, 7, 0], to: [11, 7, 11], block: "minecraft:white_concrete" }])).filter((p) => p.where === "spawn")).toEqual([]);
   });
 });
 

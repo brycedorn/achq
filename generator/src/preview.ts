@@ -36,14 +36,14 @@ function requestPath(url: string | undefined): string | undefined {
  * Serve the viewer for one design. `/scene.json` is rebuilt from the design file on every request, so
  * editing the JSON and reloading (or letting the page poll) shows the change without a restart.
  */
-export function startPreview(name: string, version: number | undefined, port: number): Promise<Server> {
+export function startPreview(name: string, port: number): Promise<Server> {
   // A large landscape takes seconds to build and the page polls every second, so the scene is kept
   // until the design file changes.
   let cache: { key: string; json: string } | undefined;
   const sceneJson = (): string => {
-    const key = readFileSync(designFilePath(name, version), "utf8");
+    const key = readFileSync(designFilePath(name), "utf8");
     if (cache?.key === key) return cache.json;
-    cache = { key, json: JSON.stringify(buildScene(loadDesign(name, version))) };
+    cache = { key, json: JSON.stringify(buildScene(loadDesign(name))) };
     return cache.json;
   };
   const server = createServer((req, res) => {

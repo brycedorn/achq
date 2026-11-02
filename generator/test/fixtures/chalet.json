@@ -1,6 +1,5 @@
 {
-  "name": "snowy-chalet",
-  "version": 1,
+  "name": "chalet",
   "seed": 0,
   "size": [31, 18, 36],
   "floorY": 3,

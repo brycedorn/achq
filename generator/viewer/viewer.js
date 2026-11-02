@@ -392,7 +392,7 @@ function syncUi() {
 }
 
 function showMeta() {
-  $("title").textContent = `${data.name} v${data.version}`;
+  $("title").textContent = data.name;
   const [w, h, l] = data.size;
   $("sub").textContent = `${w} x ${h} x ${l} blocks, ${data.cells.length / 4} placed, ${Object.keys(data.anchors).length} anchors`;
   const list = $("problems");

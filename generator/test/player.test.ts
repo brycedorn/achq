@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { checkDesign, type DesignProblem } from "../src/check.js";
+import { checkDesign } from "../src/check.js";
 import { parseDesign, type PartInput } from "../src/design.js";
 import { renderDesign } from "../src/render.js";
 import { PlayerWalk, shapes } from "../src/player.js";
 
 /** A stone floor at layer 2, the spawn at (2, 2) on it, and a place to walk to at `to` (feet layer). */
-const room = (parts: PartInput[], to: [number, number, number], walk = true) =>
+const room = (parts: PartInput[], to: [number, number, number]) =>
   parseDesign({
-    name: "walk", version: 1, size: [16, 12, 16], floorY: 2, shell: { kind: "none" },
-    ...(walk ? { walk: { to: [{ name: "goal", at: to }] } } : {}),
+    name: "walk", size: [16, 12, 16], floorY: 2, shell: { kind: "none" },
+    walk: { to: [{ name: "goal", at: to }] },
     parts: [
       { type: "box", id: "floor", from: [0, 2, 0], to: [15, 2, 15], block: "minecraft:stone" },
       { type: "spot", id: "spawn", anchor: "spawn", at: [2, 2], look: "south" },
@@ -68,14 +68,6 @@ describe("walking as a player", () => {
     expect(walkProblems(wall("minecraft:air"), [12, 3, 12])).toEqual([]);
     expect(walkProblems(wall("minecraft:oak_door[facing=east,half=lower]"), [12, 3, 12])).toEqual([]);
     expect(walkProblems(wall("minecraft:oak_fence"), [12, 3, 12])).toHaveLength(1);
-  });
-
-  it("is a warning, not a problem, for designs saved before the check", () => {
-    const old = room([platform(3)], [8, 4, 8], false);
-    expect(checkDesign(old).filter((p) => /a player/.test(p.message))).toEqual([]);
-    const warnings: DesignProblem[] = [];
-    checkDesign(old, warnings);
-    expect(warnings.filter((w) => /a player/.test(w.message))).toEqual([]); // only agent spots are walked to then: none here
   });
 
   it("knows the shapes of blocks: the tall half of a stair is the way up, bars are a thin post", () => {
@@ -139,7 +131,7 @@ describe("guarded drops", () => {
     const pool: PartInput[] = [{ type: "box", id: "pool", from: [0, 3, 0], to: [15, 3, 15], block: "minecraft:water" }];
     expect(drops([...walkway, ...pool])).toEqual([]);
     const hill = parseDesign({
-      name: "hill", version: 1, size: [24, 20, 24], floorY: 10, shell: { kind: "none" }, walk: { to: [] },
+      name: "hill", size: [24, 20, 24], floorY: 10, shell: { kind: "none" }, walk: { to: [] },
       parts: [
         { type: "terrain", id: "ground", x: [0, 23], z: [0, 23], grid: [[10, 10], [2, 2]], surface: "minecraft:grass_block", rock: "minecraft:stone", base: "minecraft:stone" },
         { type: "spot", id: "spawn", anchor: "spawn", at: [4, 2], look: "south" },

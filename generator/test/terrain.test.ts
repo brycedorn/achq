@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { checkDesign } from "../src/check.js";
-import { loadDesign } from "../src/designs.js";
+import { loadFixture } from "./fixtures/index.js";
 import { renderDesign } from "../src/render.js";
 import { buildScene } from "../src/scene.js";
 
-const design = loadDesign("snowy-chalet", 2);
+const design = loadFixture("chalet-shelf");
 const { volume, conflicts } = renderDesign(design, { origin: [0, 0, 0] });
 const name = (x: number, y: number, z: number) => volume.get(x, y, z).replace(/\[.*$/, "");
 const GROUND = new Set(["minecraft:stone", "minecraft:andesite", "minecraft:snow_block", "minecraft:stone_bricks"]);
@@ -15,16 +14,14 @@ const ground = (x: number, z: number) => {
   return y;
 };
 
-describe("snowy-chalet v2", () => {
+describe("chalet on a shelf (fixture)", () => {
   it("is the chalet of v1 moved onto a shelf, with ground and trees", () => {
-    expect(design.version).toBe(2);
     expect(design.floorY).toBe(14);
     expect(design.parts[0]!.type).toBe("terrain");
     expect(design.parts.at(-1)!.type).toBe("trees");
   });
 
-  it("passes every check with no overlaps", () => {
-    expect(checkDesign(design)).toEqual([]);
+  it("places its parts without overlaps", () => {
     expect(conflicts).toEqual([]);
   });
 

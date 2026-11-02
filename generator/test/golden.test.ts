@@ -1,41 +1,28 @@
 import { createHash } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { loadDesign } from "../src/designs.js";
+import { listDesigns, loadDesign } from "../src/designs.js";
 import { renderDesign } from "../src/render.js";
 
 /**
- * Saved design versions are immutable: the same version must always render the same blocks, so a
- * world built from it can be rebuilt. These are the first 16 hex digits of the SHA-256 of each
- * version's `.nbt` at origin 40, 64, 40, taken before compression: gzip writes the operating system
- * into its header, so the compressed file differs between Windows and Linux. A code change that alters one fails here; if the change
- * is meant to alter old output, it should instead be opt-in for new versions.
+ * Each design renders the blocks it rendered when its hash was taken, so a code change cannot alter a design by
+ * accident. These are the first 16 hex digits of the SHA-256 of each design's `.nbt` at origin 40, 64, 40, taken
+ * before compression: gzip writes the operating system into its header. When a change is meant to alter a design,
+ * look at the result, then update its hash here.
  */
 const GOLDEN: Record<string, string> = {
-  "test-office v1": "24062cb581a3712c",
-  "snowy-chalet v1": "8992d206a635be6b",
-  "snowy-chalet v2": "91ee73f503b2a257",
-  "snowy-chalet v3": "7e2b94cb2c7440ba",
-  "snowy-chalet v4": "06fca43bcc18a6e1",
-  "snowy-chalet v5": "b6c5fb74cf1493c6",
-  "snowy-chalet v6": "0d64107cfa6b06e9",
-  "snowy-chalet v7": "21569ea37293b01b",
-  "snowy-chalet v8": "559a097c5fe1b197",
-  "snowy-chalet v9": "9b09d39fdeeee707",
-  "snowy-chalet v10": "2c23a4c273ea65d9",
-  "snowy-chalet v11": "a54d676edfd94ce0",
-  "riviera-yacht v1": "8ad935aa09d209a8",
-  "riviera-yacht v2": "0cb255ea3a759f98",
-  "orbital-station v1": "888f068c4dc1f877",
-  "orbital-station v2": "a68b3a85fe156ee4",
-  "lighthouse v1": "cab84a8f759fbe3c",
+  "test-office": "6da4cda6e29d2032",
+  "snowy-chalet": "a54d676edfd94ce0",
+  "riviera-yacht": "c6efa9d64dc31a94",
+  "orbital-station": "a68b3a85fe156ee4",
+  "lighthouse": "7ca693e37d7e1bed",
 };
 
-describe("saved designs render exactly as before", () => {
-  for (const [key, hash] of Object.entries(GOLDEN)) {
-    it(key, () => {
-      const [name, v] = key.split(" v") as [string, string];
-      const { volume } = renderDesign(loadDesign(name, Number(v)), { origin: [40, 64, 40] });
+describe("designs render exactly as before", () => {
+  it("has a hash for every design", () => expect(Object.keys(GOLDEN).sort()).toEqual(listDesigns()));
+  for (const [name, hash] of Object.entries(GOLDEN)) {
+    it(name, () => {
+      const { volume } = renderDesign(loadDesign(name), { origin: [40, 64, 40] });
       expect(createHash("sha256").update(gunzipSync(volume.toStructure())).digest("hex").slice(0, 16)).toBe(hash);
     });
   }

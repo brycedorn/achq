@@ -47,18 +47,25 @@ export function restaurant(ctx: Ctx, part: Restaurant): void {
       put(u, w, top + 1, part.roof);
       if (u === 0 || u === width - 1 || w === 0 || w === depth - 1) put(u, w, top + 2, part.wall);
     }
+  // The hillside kept below the roof and the awning for a block round, so no one walks off the slope onto them.
+  for (let u = -1; u <= width; u++)
+    for (let w = -part.terrace; w <= depth; w++) {
+      if (u >= 0 && u < width && w >= -part.terrace && w < depth) continue;
+      const [x, z] = at(u, w);
+      for (let yy = w >= 0 ? top + 2 : top - 1; yy < ctx.v.height; yy++) if (ctx.v.get(x, yy, z) !== AIR && !ctx.claimed(x, yy, z)) set(x, yy, z, AIR);
+    }
   // The front: an open arcade, pillars every `bay` columns under a lintel.
   for (let u = 0; u < width; u++) {
     const pillar = u === 0 || u === width - 1 || u % part.bay === 0;
     for (let yy = y + 1; yy < top; yy++) put(u, 0, yy, pillar ? part.pillar : AIR);
     put(u, 0, top, part.wall);
   }
-  // Side windows; when tidy, only where open air is outside them, not the hillside or the next building.
+  // Side windows, only where open air is outside them, not the hillside or the next building.
   for (let w = 2; w < depth - 2; w += 2)
     for (const u of [0, width - 1]) {
       const [ox, oz] = at(u === 0 ? -1 : width, w);
       const outside = (yy: number) => ctx.v.get(ox, yy, oz) !== AIR;
-      if (part.tidy && (outside(y + 2) || outside(y + 3))) continue;
+      if (outside(y + 2) || outside(y + 3)) continue;
       put(u, w, y + 2, part.glass);
       put(u, w, y + 3, part.glass);
     }

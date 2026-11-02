@@ -460,8 +460,7 @@ export function trees(ctx: Ctx, part: Of<"trees">): void {
         const log = `${part.trunk}[axis=${alongX ? "x" : "z"}]`;
         if (inside(v, bx, y, bz)) set(bx, y, bz, log);
         const [ex, ez] = alongX ? [bx + dir, bz] : [bx, bz + dir];
-        const tipY = part.tidy ? y : y + 1;
-        if (hash2(tx, tz + k, design.seed + 10) < 0.5 && inside(v, ex, tipY, ez)) set(ex, tipY, ez, log);
+        if (hash2(tx, tz + k, design.seed + 10) < 0.5 && inside(v, ex, y, ez)) set(ex, y, ez, log);
       }
       continue;
     }
@@ -484,10 +483,9 @@ export function trees(ctx: Ctx, part: Of<"trees">): void {
   }
 }
 
-/** One cypress, stone pine or olive, `size` blocks tall, standing on the ground at `base`; tidied when asked. */
+/** One cypress, stone pine or olive, `size` blocks tall, standing on the ground at `base`. */
 function warmTree(ctx: Ctx, part: Of<"trees">, tx: number, base: number, tz: number, size: number): void {
   const leaves = drawWarmTree(ctx, part, tx, base, tz, size);
-  if (!part.tidy) return;
   // Trim leaves that touch nothing: a crown has no stray leaves floating on their own.
   const { v } = ctx;
   for (const [x, y, z] of leaves) {

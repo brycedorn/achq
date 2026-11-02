@@ -14,7 +14,6 @@ const SEA = 6;
 function coast(parts: PartInput[] = [], extra: Record<string, unknown> = {}) {
   return parseDesign({
     name: "coast",
-    version: 1,
     size: [40, 24, 40],
     shell: { kind: "none" },
     parts: [
@@ -223,7 +222,6 @@ describe("hillside town", () => {
 describe("offices off the main floor", () => {
   const design = parseDesign({
     name: "decks",
-    version: 1,
     size: [24, 16, 24],
     floorY: 2,
     shell: { kind: "none" },
@@ -264,7 +262,7 @@ describe("offices off the main floor", () => {
 describe("the goal hologram", () => {
   const room = (ceiling: number, lampY: number) =>
     parseDesign({
-      name: "atrium", version: 1, size: [12, 12, 12], floorY: 2, shell: { kind: "none" },
+      name: "atrium", size: [12, 12, 12], floorY: 2, shell: { kind: "none" },
       parts: [
         { type: "box", id: "floor", from: [0, 2, 0], to: [11, 2, 11], block: "minecraft:stone" },
         { type: "box", id: "ceiling", from: [0, ceiling, 0], to: [11, ceiling, 11], block: "minecraft:stone" },

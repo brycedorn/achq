@@ -5,7 +5,7 @@ import { renderDesign } from "../src/render.js";
 /** A gentle hillside rising to the north, and a walk-in village on it. */
 const hillside = (style: "varied" | "explorable", interior = true) =>
   parseDesign({
-    name: "village", version: 1, seed: 4, size: [60, 30, 60], shell: { kind: "none" },
+    name: "village", seed: 4, size: [60, 30, 60], shell: { kind: "none" },
     parts: [
       { type: "terrain", id: "hill", x: [0, 59], z: [0, 59], grid: [[12, 12], [4, 4]], surface: "minecraft:grass_block", rock: "minecraft:stone", base: "minecraft:stone" },
       {

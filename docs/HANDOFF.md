@@ -1,5 +1,12 @@
 # ACHQ handoff, 2026-10-10 (late evening), updated 2026-10-20
 
+## Update, 2026-11-02
+
+- No more design versions: each design is one file, `designs/<name>.json` (git is the history). `--version` and the schema's `version` are gone; the layout `revision` is a fingerprint of the design. `tools/make-*-vN.py` are deleted. The small chalets the renderer tests use are `generator/test/fixtures/*.json`.
+- Every check is a problem for every design (no `natural`, `walk.trails` or old-version warnings), the roofed-spawn check included, and `test/designs.test.ts` holds each design to all of them. `tidy` and `deck.rail.joined` are gone: their behaviour is the only one. A fall must be more than 3 blocks to need a railing (fall damage is the fall less 3).
+- Fixes from the audit: chalet path stairs; the lighthouse path traced across the bluff to new quay steps at the jetty (was a trench and a causeway into the sea); yacht lanes with stairs, starting between the restaurants; houses and restaurants on the hillside keep the slope below their eaves; beached boats rest on the sand; a skylight over the test office's spawn.
+- Golden hashes changed on purpose for test-office, riviera-yacht and lighthouse. None of this is verified in game.
+
 ## Update, 2026-10-22 (later)
 
 - New design `orbital-station` v1 (`tools/make-orbital-station-v1.py`, pinned in the golden test): see SPEC "Third example". Verified in game: all anchors load, every camera view, the spawn lands inside, the goal hologram has room.
@@ -36,12 +43,12 @@ A generator that turns a design (JSON) into an AgentCraft-compatible HQ: a struc
 
 - Branch `chalet-terrain`, last commit `f91eef3` ("add river, atmosphere; landscape-scale chalet"), pushed, working tree clean.
 - Whether the PR for this branch is open or merged: unknown. Check on GitHub. The PR must target `brycedorn/achq` `main`, never `blendi-remade/agentcraft`.
-- Layout: `generator/` (TypeScript, Node, vitest, zod, three.js for the viewer), `designs/` (saved versions), `docs/` (SPEC, styles, this file), `tools/` (authoring script), `mod/` (upstream Fabric mod, untouched).
+- Layout: `generator/` (TypeScript, Node, vitest, zod, three.js for the viewer), `designs/` (one file per design), `docs/` (SPEC, styles, this file), `mod/` (upstream Fabric mod, untouched).
 - 77 tests pass, typecheck is clean, `npm.cmd run check` passes for `test-office` and `snowy-chalet`.
 
 ## What exists
 
-- `generator/src/design.ts`: zod schema. A design is a name, version, seed, size, `floorY`, a `shell` (`box` or `none`), an optional `atmosphere`, and a list of parts with unique ids. A part may overwrite another only if it lists that id in `over`.
+- `generator/src/design.ts`: zod schema. A design is a name, seed, size, `floorY`, a `shell` (`box` or `none`), an optional `atmosphere`, and a list of parts with unique ids. A part may overwrite another only if it lists that id in `over`.
 - Part types: `deskRow`, `station`, `seatedTable`, `lanternGrid`, `podium`, `taskWall`, `camera`, `spot`, `box` (air carves), `gableRoof`, `gableEnd`, `deck`, `fireplace`, `terrain`, `trees`, `boulders`, `village`.
 - `render.ts` renders a design to a `Volume` plus anchors. `landscape.ts` holds terrain (peaks, ridged crags, rect and ellipse flats, graded trails with lamps, rivers open or frozen), the forest (clusters, taper, dead trees), boulders and the village (`classic` and `varied` styles).
 - `check.ts` + `walk.ts`: every design check (anchor contract, overlaps, seats, slot spacing, standing spots, reachability from `spawn` with the mod's pathfinder rules). `generate` refuses to write if any fail.
@@ -60,7 +67,7 @@ A generator that turns a design (JSON) into an AgentCraft-compatible HQ: a struc
 
 ## Decisions made
 
-- The design file is the source of truth. Saved versions are immutable and must keep rendering the same: old behaviour is kept as the default (for example `style: "classic"` for the village, `taper: 0`), and new behaviour is opt-in. v3 output is byte-identical to the file in the user's world.
+- The design file is the source of truth. (Until 2026-11-02 saved versions were immutable and new behaviour opt-in; now there is one file per design and the generator improves every design at once, guarded by the golden hashes.)
 - Water never touches the volume edge: rivers freeze near the edges so a pasted structure cannot leak water.
 - Large `.nbt` files leave air out (above 250,000 cells); `.schem` is skipped above 4,000,000 cells. WorldEdit is never a dependency.
 - Composition (user's direction): chalet high on a north-west shoulder facing south, a river starting below it and winding away to the south-east, the town off the line of sight (about 270 blocks, 40 degrees right) and visible only in the distance, mountains of many heights scattered through the valley. The user said "think bigger, like 8x"; interpreted as about 3 times in each horizontal direction.

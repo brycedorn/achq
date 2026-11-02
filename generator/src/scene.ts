@@ -7,7 +7,6 @@ import { Walk } from "./walk.js";
 /** Everything the browser viewer needs, in local block coordinates. JSON-serialisable. */
 export type Scene = {
   name: string;
-  version: number;
   size: [number, number, number];
   /** Distinct block states, indexed by the fourth number of each `cells` entry. */
   palette: string[];
@@ -77,7 +76,6 @@ export function buildScene(design: Design): Scene {
 
   return {
     name: design.name,
-    version: design.version,
     size: [...design.size],
     palette,
     cells,

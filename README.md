@@ -56,7 +56,6 @@ Relative paths are read from the repo root. To skip `--saves` every time, set `A
 ### Import options
 
 ```bash
-npm run import -- --saves <folder> --design snowy-chalet --version 6   # an older version of a design
 npm run import -- --saves <folder> --design riviera-yacht                 # the yacht
 npm run import -- --saves <folder> --design orbital-station               # the space station
 npm run import -- --saves <folder> --design lighthouse                    # the lighthouse
@@ -78,7 +77,7 @@ The agents themselves need AgentCraft's Foreman (the agent orchestrator), which 
 
 ## Making designs
 
-A design is a JSON file in `designs/<name>/v<N>.json`. Saved versions never change: a new idea is a new version, so every world that was ever generated can be generated again.
+A design is a JSON file, `designs/<name>.json`, changed in place as it improves; git keeps its history. The generator's improvements reach every design at once, and a fingerprint test makes any change to a design's blocks deliberate.
 
 ```bash
 npm run preview -- --design snowy-chalet            # 3D preview in the browser, reloads on edits
@@ -87,7 +86,7 @@ npm test                                            # the full test suite
 npm run coverage                                    # the test suite with a coverage table
 ```
 
-`check` covers what the mod needs to run agents in the world: every required anchor, a seat at each desk, a monitor facing it, stations agents can walk to from the entrance and the lounge, and a lounge with a place for each agent. It also walks the design as a player, who cannot jump up a full block the way agents do: every room and every place the design names has to be walkable from the spawn and back, and every drop that would hurt beside a floor or a path needs a railing or a wall. Writing a world also stops on anything Minecraft cannot hold (height, chunk size). The rules and AgentCraft's limits are in [docs/SPEC.md](docs/SPEC.md).
+`check` covers what the mod needs to run agents in the world: every required anchor, a seat at each desk, a monitor facing it, stations agents can walk to from the entrance and the lounge, and a lounge with a place for each agent. It also walks the design as a player, who cannot jump up a full block the way agents do: every room and every place the design names has to be walkable from the spawn and back, and every drop that would hurt beside a floor or a path needs a railing or a wall, and both ends of every path have to be walkable there and back. It also looks for land no landscape has, such as a path or a stream carried on an embankment. Writing a world also stops on anything Minecraft cannot hold (height, chunk size). The rules and AgentCraft's limits are in [docs/SPEC.md](docs/SPEC.md).
 
 ## The anchor contract
 

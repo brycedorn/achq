@@ -1,6 +1,5 @@
 {
   "name": "test-office",
-  "version": 1,
   "seed": 0,
   "size": [25, 8, 19],
   "shell": {
@@ -41,6 +40,7 @@
     { "type": "podium", "id": "podium", "at": [12, 9], "block": "minecraft:lectern" },
     { "type": "spot", "id": "atrium", "anchor": "goal_atrium", "at": [12, 11], "look": "south" },
     { "type": "taskWall", "id": "task-wall", "x": 0, "z": [7, 11], "y": [2, 4], "block": "minecraft:dark_oak_planks" },
+    { "type": "box", "id": "skylight", "from": [12, 6, 2], "to": [12, 6, 2], "block": "minecraft:glass_pane" },
     { "type": "camera", "id": "overview", "name": "overview", "at": [23.5, 5.5, 1.5], "yaw": 150, "pitch": 35 }
   ]
 }

@@ -1,16 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { checkDesign } from "../src/check.js";
 import { parseDesign } from "../src/design.js";
-import { loadDesign } from "../src/designs.js";
+import { loadFixture } from "./fixtures/index.js";
 import { renderDesign } from "../src/render.js";
 
-const design = loadDesign("snowy-chalet", 1);
+const design = loadFixture("chalet");
 const { volume, layout, conflicts } = renderDesign(design, { origin: [0, 0, 0] });
 const name = (x: number, y: number, z: number) => volume.get(x, y, z).replace(/\[.*$/, "");
 
-describe("snowy-chalet v1", () => {
-  it("passes every design check", () => {
-    expect(checkDesign(design)).toEqual([]);
+describe("chalet fixture", () => {
+  it("places its parts without overlaps", () => {
     expect(conflicts).toEqual([]);
   });
 

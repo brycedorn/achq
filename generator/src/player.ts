@@ -14,7 +14,7 @@ import { parseState, type Volume } from "./schematic.js";
 export const STEP = 0.6;
 export const HEIGHT = 1.8;
 export const HALF_WIDTH = 0.3;
-/** A fall this long hurts a player: an edge with one must have a railing or a wall. */
+/** A fall longer than this hurts a player (damage is the fall less 3): an edge with one must have a railing or a wall. */
 export const DROP = 3;
 /** The grid a player moves on: four positions to a block each way. */
 const GRID = 4;
@@ -196,8 +196,8 @@ export class PlayerWalk {
   }
 
   /**
-   * How far a player at `s` would fall walking a quarter block in (dx, dz), when nothing stops them: a drop of `DROP`
-   * blocks or more onto something solid, or into the void. Undefined when it is less, when a wall or railing is in
+   * How far a player at `s` would fall walking a quarter block in (dx, dz), when nothing stops them: a drop of more
+   * than `DROP` blocks onto something solid, or into the void. Undefined when it is less, when a wall or railing is in
    * the way, or when the landing is water or the fall passes a ladder.
    */
   drop(s: Spot, dx: number, dz: number): number | undefined {
@@ -211,7 +211,7 @@ export class PlayerWalk {
     // Falling past a ladder is safe: a player catches it on the way down.
     for (let y = Math.floor(s.f + EPS); y >= Math.max(Math.floor(landing), 0); y--) if (ladder(y)) return undefined;
     const fall = s.f - landing;
-    return fall >= DROP - EPS ? fall : undefined;
+    return fall > DROP + EPS ? fall : undefined;
   }
 
   /** Whether a player at `s` is on a ladder (or just over its top rung). */

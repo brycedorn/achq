@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { type Layout } from "./anchors.js";
 import { type Design, type Direction, type Part, YAW } from "./design.js";
 import { parseState, Volume } from "./schematic.js";
@@ -347,7 +348,7 @@ export function renderDesign(design: Design, { origin }: Placement): Rendered {
           for (let z = z0; z <= z1; z++) {
             const onEdge =
               (sides.has("north") && z === z0) || (sides.has("south") && z === z1) || (sides.has("west") && x === x0) || (sides.has("east") && x === x1);
-            if (onEdge) set(x, part.y + 1, z, part.rail.joined ? railState(x, z) : part.rail.block);
+            if (onEdge) set(x, part.y + 1, z, railState(x, z));
             const post = (x === x0 || x === x1 || (x - x0) % part.posts.every === 0) && (z === z0 || z === z1 || (z - z0) % part.posts.every === 0);
             const perimeter = x === x0 || x === x1 || z === z0 || z === z1;
             if (post && perimeter) fill([x, part.posts.bottom, z], [x, part.y - 1, z], part.posts.block);
@@ -416,7 +417,9 @@ export function renderDesign(design: Design, { origin }: Placement): Rendered {
 
   // `bounds` is the walkable HQ region, as AgentCraft's builder contract asks: its pathfinder searches only
   // there (padded by 2) with a budget of 12,000 cells, so a whole landscape would leave long routes unfound.
-  const layout: Layout = { layout: design.name, revision: design.version, anchors };
+  // The mod only compares `revision` to notice a changed layout, so a fingerprint of the design serves.
+  const revision = parseInt(createHash("sha256").update(JSON.stringify(design)).digest("hex").slice(0, 7), 16);
+  const layout: Layout = { layout: design.name, revision, anchors };
   const hq = hqBox(layout, origin, design.size);
   layout.bounds = hq
     ? { minX: ox + hq[0], minY: oy + hq[1], minZ: oz + hq[2], maxX: ox + hq[3], maxY: oy + hq[4], maxZ: oz + hq[5] }

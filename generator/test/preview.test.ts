@@ -36,7 +36,7 @@ describe("startPreview", () => {
   let server: Server;
   let base: string;
   beforeAll(async () => {
-    server = await startPreview("test-office", undefined, 0);
+    server = await startPreview("test-office", 0);
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   });
   afterAll(() => new Promise<void>((done) => server.close(() => done())));
@@ -51,7 +51,6 @@ describe("startPreview", () => {
   it("serves a fresh scene as JSON", async () => {
     const scene = (await (await fetch(`${base}/scene.json`)).json()) as Scene;
     expect(scene.name).toBe("test-office");
-    expect(scene.version).toBe(1);
   });
 
   it("survives requests that are not valid paths", async () => {

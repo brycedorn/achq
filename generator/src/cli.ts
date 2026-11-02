@@ -11,18 +11,18 @@ import { writeWorld } from "./world.js";
 
 const USAGE = `usage:
   cli validate <agentcraft-anchors.json>
-  cli check --design <name> [--version <n>]
-  cli preview --design <name> [--version <n>] [--port <n>]
-  cli generate --design <name> [--version <n>] --origin <x,y,z> --out <dir>
-  cli import --saves <folder> [--design <name>] [--version <n>] [--save <world folder>]
+  cli check --design <name>
+  cli preview --design <name> [--port <n>]
+  cli generate --design <name> --origin <x,y,z> --out <dir>
+  cli import --saves <folder> [--design <name>] [--save <world folder>]
        (write the world save and install it as AgentCraft's HQ world; the old one is kept as a backup)
   cli restore --saves <folder>
        (put the backed-up HQ world back)
-  cli world [--design <name>] [--version <n>] [--origin <x,y,z>] [--out <dir>]
+  cli world [--design <name>] [--origin <x,y,z>] [--out <dir>]
        (a ready-to-open AgentCraft HQ world save; defaults: snowy-chalet, latest, the design's origin or 0,64,0, ../out/worlds)
-  cli play [--design <name>] [--version <n>] [--origin <x,y,z>] [--no-launch] [--no-shot]
-       (place it in your HQ world; defaults: snowy-chalet, latest version, origin 40,64,40)
-  cli play --save [--design <name>] [--version <n>] [--no-launch] [--no-shot] [--restart] [--cams a,b]
+  cli play [--design <name>] [--origin <x,y,z>] [--no-launch] [--no-shot]
+       (place it in your HQ world; defaults: snowy-chalet, origin 40,64,40)
+  cli play --save [--design <name>] [--no-launch] [--no-shot] [--restart] [--cams a,b]
        (open a generated world save instead, setting your HQ world aside)
   cli play --restore
        (put your HQ world back after --save)`;
@@ -59,12 +59,10 @@ function report(layout: ReturnType<typeof parseLayout>): never | void {
 
 /** Print design problems and exit 1 when there are any. */
 function requireClean(design: ReturnType<typeof loadDesign>): void {
-  const warnings: ReturnType<typeof checkDesign> = [];
-  const problems = checkDesign(design, warnings);
-  for (const w of warnings) console.warn(`warning: ${w.where}: ${w.message}`);
+  const problems = checkDesign(design);
   if (problems.length === 0) return;
   for (const p of problems) console.error(`${p.where}: ${p.message}`);
-  console.error(`${problems.length} problem${problems.length === 1 ? "" : "s"} in '${design.name}' v${design.version}; nothing written`);
+  console.error(`${problems.length} problem${problems.length === 1 ? "" : "s"} in '${design.name}'; nothing written`);
   process.exit(1);
 }
 
@@ -76,8 +74,7 @@ function saveOrigin(design: ReturnType<typeof loadDesign>): string {
 function designFromFlags(args: string[], fallback?: string): ReturnType<typeof loadDesign> {
   const name = flag(args, "design") ?? fallback;
   if (!name) throw new Error(USAGE);
-  const version = flag(args, "version");
-  return loadDesign(name, version === undefined ? undefined : Number(version));
+  return loadDesign(name);
 }
 
 const [command, ...rest] = process.argv.slice(2);
@@ -87,15 +84,14 @@ if (command === "validate" && rest[0]) {
 } else if (command === "preview") {
   const name = flag(rest, "design");
   if (!name) throw new Error(USAGE);
-  const version = flag(rest, "version");
   const port = Number(flag(rest, "port") ?? 5173);
-  loadDesign(name, version === undefined ? undefined : Number(version)); // fail fast on a bad name
-  await startPreview(name, version === undefined ? undefined : Number(version), port);
+  loadDesign(name); // fail fast on a bad name
+  await startPreview(name, port);
   console.log(`preview of '${name}' at http://localhost:${port}/  (reload to pick up edits; Ctrl+C to stop)`);
 } else if (command === "check") {
   const design = designFromFlags(rest);
   requireClean(design);
-  console.log(`ok: '${design.name}' v${design.version} passes all checks`);
+  console.log(`ok: '${design.name}' passes all checks`);
 } else if (command === "generate") {
   const out = flag(rest, "out");
   if (!out) throw new Error(USAGE);
@@ -110,7 +106,7 @@ if (command === "validate" && rest[0]) {
 } else if (command === "world") {
   const design = designFromFlags(rest, "snowy-chalet");
   requireClean(design);
-  const out = pathFlag(rest, "out") ?? `../out/worlds/${design.name}-v${design.version}`;
+  const out = pathFlag(rest, "out") ?? `../out/worlds/${design.name}`;
   const started = Date.now();
   const result = writeWorld(design, parseOrigin(flag(rest, "origin") ?? saveOrigin(design)), out);
   console.log(`wrote the world save ${result.dir} (${result.chunks} chunks in ${result.regions} region files, ${((Date.now() - started) / 1000).toFixed(1)} s)`);
@@ -140,7 +136,7 @@ if (command === "validate" && rest[0]) {
       if (!save) {
         const design = designFromFlags(rest, "snowy-chalet");
         requireClean(design);
-        save = writeWorld(design, parseOrigin(flag(rest, "origin") ?? saveOrigin(design)), `../out/worlds/${design.name}-v${design.version}`).dir;
+        save = writeWorld(design, parseOrigin(flag(rest, "origin") ?? saveOrigin(design)), `../out/worlds/${design.name}`).dir;
       }
       const backup = installWorld(save, saves, say);
       say(`Done. Start AgentCraft: it opens the 'AgentCraft HQ' world.${backup ? " To undo: npm run restore -- --saves <the same folder>." : ""}`);

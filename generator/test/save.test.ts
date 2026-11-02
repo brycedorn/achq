@@ -136,7 +136,7 @@ describe("packIndices", () => {
 
 describe("layout bounds", () => {
   it("are the HQ's walkable region, not the whole landscape", () => {
-    const chalet = loadDesign("snowy-chalet", 7);
+    const chalet = loadDesign("snowy-chalet");
     const { layout } = renderDesign(chalet, { origin: [40, 64, 40] });
     const b = layout.bounds!;
     expect((b.maxX - b.minX + 1) * (b.maxZ - b.minZ + 1)).toBeLessThan(2500); // the chalet, not 480 x 512

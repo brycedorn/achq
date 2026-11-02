@@ -1,6 +1,5 @@
 {
   "name": "orbital-station",
-  "version": 2,
   "seed": 3,
   "size": [220, 64, 220],
   "floorY": 28,
