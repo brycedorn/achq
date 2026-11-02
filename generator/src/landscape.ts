@@ -15,6 +15,8 @@ export type Ground = {
   onPath: (x: number, z: number) => boolean;
   /** Which of this terrain's trails a column is on (its index), if any. */
   pathOf: (x: number, z: number) => number | undefined;
+  /** How many layers trails and rivers built a column up above the land as it lies (0 where they only cut). */
+  raised: (x: number, z: number) => number;
 };
 
 /** What the renderer gives landscape parts to work with. */
@@ -112,17 +114,52 @@ function reach(samples: Sample[], pad: number) {
 }
 
 /** The sample nearest to (x, z) and its distance. */
-function nearest(samples: Sample[], x: number, z: number): { d: number; sample: Sample } {
-  let best = samples[0]!;
+function nearest(samples: Sample[], x: number, z: number): { d: number; sample: Sample; i: number } {
+  let i = 0;
   let bestD = Infinity;
-  for (const s of samples) {
+  samples.forEach((s, k) => {
     const d = (s.x - x) * (s.x - x) + (s.z - z) * (s.z - z);
     if (d < bestD) {
       bestD = d;
-      best = s;
+      i = k;
     }
-  }
-  return { d: Math.sqrt(bestD), sample: best };
+  });
+  return { d: Math.sqrt(bestD), sample: samples[i]!, i };
+}
+
+/**
+ * Water levels for a river that follows the ground, one per sample: a block below the lowest ground across
+ * the channel and its banks, never rising downstream (from the first point), so water stands in a groove.
+ */
+function followGround(samples: Sample[], width: number, ground: (x: number, z: number) => number): number[] {
+  const half = Math.ceil(width / 2) + 1;
+  let run = Infinity;
+  return samples.map(({ x, z, nx, nz }) => {
+    let low = Infinity;
+    for (let k = -half; k <= half; k++) low = Math.min(low, ground(Math.round(x + nx * k), Math.round(z + nz * k)));
+    run = Math.min(run, Math.round(low) - 1);
+    return run;
+  });
+}
+
+/** Steepest grade of a trail that follows the ground: a footpath down a mountainside, short of a stair. */
+const TRAIL_GRADE = 0.6;
+
+/**
+ * Heights for a trail that follows the ground, one per sample: as close under the ground as the trail can keep while
+ * no steeper than `TRAIL_GRADE`, so it cuts a bench where the slope is steep and never stands on fill.
+ */
+function alongGround(samples: Sample[], width: number, ground: (x: number, z: number) => number): number[] {
+  const half = Math.ceil(width / 2);
+  const out = samples.map(({ x, z, nx, nz }) => {
+    let low = Infinity;
+    for (let k = -half; k <= half; k++) low = Math.min(low, ground(Math.round(x + nx * k), Math.round(z + nz * k)));
+    return low;
+  });
+  // The highest line under every sample with no steeper grade: one pass each way.
+  for (let i = 1; i < out.length; i++) out[i] = Math.min(out[i]!, out[i - 1]! + TRAIL_GRADE * (samples[i]!.s - samples[i - 1]!.s));
+  for (let i = out.length - 2; i >= 0; i--) out[i] = Math.min(out[i]!, out[i + 1]! + TRAIL_GRADE * (samples[i + 1]!.s - samples[i]!.s));
+  return out;
 }
 
 // ---------- terrain ----------
@@ -135,92 +172,111 @@ export function terrain(ctx: Ctx, part: Of<"terrain">): void {
   const cols = x1 - x0 + 1;
   const rows = z1 - z0 + 1;
 
-  const trails = part.trails.map((t) => {
-    const samples = sampleLine(t.points);
-    return { t, samples, box: reach(samples, t.width / 2 + t.margin + 1) };
-  });
-  const rivers = part.rivers.map((r) => {
-    const samples = sampleLine(r.points);
-    return { r, samples, box: reach(samples, r.width / 2 + r.margin + 1) };
-  });
   const within = (b: { x0: number; x1: number; z0: number; z1: number }, x: number, z: number) => x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1;
   const trailAt = new Map<number, (typeof part.trails)[number]>();
   const waterAt = new Map<number, { river: (typeof part.rivers)[number]; level: number; frozen: boolean }>();
   const keepClear = new Set<number>();
+  const raisedBy = new Map<number, number>();
   const flats = [...(part.flat ? [part.flat] : []), ...part.flats];
+
+  /** The ground before trails and rivers cut into it. */
+  const natural = (x: number, z: number): number => {
+    let h = sampleGrid(part.grid, (x - x0) / Math.max(x1 - x0, 1), (z - z0) / Math.max(z1 - z0, 1));
+    for (const pk of part.peaks) {
+      const d = Math.hypot(x - pk.at[0], z - pk.at[1]);
+      if (d < pk.radius) h += pk.height * Math.pow(1 - d / pk.radius, pk.sharpness);
+    }
+    if (part.ridged) {
+      // Crags: ridged noise, fading in with altitude so the valleys stay smooth.
+      const { amplitude, scale, above } = part.ridged;
+      const ridge = 1 - Math.abs(valueNoise(x / scale, z / scale, design.seed + 7));
+      const fade = Math.min(Math.max((h - above) / above, 0), 1);
+      h += amplitude * ridge * ridge * fade * fade * (3 - 2 * fade);
+    }
+    h += valueNoise(x / part.noise.scale, z / part.noise.scale, design.seed) * part.noise.amplitude;
+
+    // Level areas: the strongest one wins, exactly level inside and blending out over its margin.
+    let level: { y: number; weight: number; ripple: number } | undefined;
+    for (const f of flats) {
+      let d: number;
+      if (f.shape === "ellipse") {
+        const [cx, cz] = [(f.x[0] + f.x[1]) / 2, (f.z[0] + f.z[1]) / 2];
+        const [rx, rz] = [Math.max((f.x[1] - f.x[0]) / 2, 0.5), Math.max((f.z[1] - f.z[0]) / 2, 0.5)];
+        const n = Math.hypot((x - cx) / rx, (z - cz) / rz);
+        d = n <= 1 ? 0 : (n - 1) * Math.min(rx, rz);
+      } else {
+        d = Math.hypot(Math.max(f.x[0] - x, 0, x - f.x[1]), Math.max(f.z[0] - z, 0, z - f.z[1]));
+      }
+      const weight = d <= 0 ? 1 : d >= f.margin ? 0 : 1 - d / f.margin;
+      if (weight > (level?.weight ?? 0)) level = { y: f.y, weight, ripple: f.ripple };
+    }
+    if (level) {
+      h = level.weight >= 1 ? level.y : h * (1 - level.weight) + level.y * level.weight;
+      if (level.ripple !== 0) h += valueNoise(x / 5, z / 5, design.seed + 3) * level.ripple * level.weight;
+    }
+    return h;
+  };
+
+  const trails = part.trails.map((t) => {
+    const samples = sampleLine(t.points);
+    return { t, samples, box: reach(samples, t.width / 2 + t.margin + 1), levels: t.y ? undefined : alongGround(samples, t.width, natural) };
+  });
+
+  /** The ground with the trails graded into it: a bench cut into the slope, rising or falling evenly along each one. */
+  const graded = (x: number, z: number, mark = false, base = natural(x, z)): number => {
+    let h = base;
+    trails.forEach(({ t, samples, box, levels }) => {
+      if (!within(box, x, z)) return;
+      const { d, sample, i } = nearest(samples, x, z);
+      const half = t.width / 2;
+      if (d > half + t.margin) return;
+      const y = levels ? levels[i]! : elevation(t.y!, sample.t);
+      const w = d <= half ? 1 : smooth(1 - (d - half) / Math.max(t.margin, 1e-9));
+      h = h * (1 - w) + y * w;
+      if (!mark) return;
+      if (d <= half) trailAt.set(colKey(x, z), t);
+      if (d <= half + 2) keepClear.add(colKey(x, z));
+    });
+    return h;
+  };
+
+  const rivers = part.rivers.map((r) => {
+    const samples = sampleLine(r.points);
+    return { r, samples, box: reach(samples, r.width / 2 + r.margin + 1), levels: r.y ? undefined : followGround(samples, r.width, graded) };
+  });
 
   const heights: number[][] = [];
   for (let z = z0; z <= z1; z++) {
     const row: number[] = [];
     for (let x = x0; x <= x1; x++) {
       const key = colKey(x, z);
-      let h = sampleGrid(part.grid, (x - x0) / Math.max(x1 - x0, 1), (z - z0) / Math.max(z1 - z0, 1));
-      for (const pk of part.peaks) {
-        const d = Math.hypot(x - pk.at[0], z - pk.at[1]);
-        if (d < pk.radius) h += pk.height * Math.pow(1 - d / pk.radius, pk.sharpness);
-      }
-      if (part.ridged) {
-        // Crags: ridged noise, fading in with altitude so the valleys stay smooth.
-        const { amplitude, scale, above } = part.ridged;
-        const ridge = 1 - Math.abs(valueNoise(x / scale, z / scale, design.seed + 7));
-        const fade = Math.min(Math.max((h - above) / above, 0), 1);
-        h += amplitude * ridge * ridge * fade * fade * (3 - 2 * fade);
-      }
-      h += valueNoise(x / part.noise.scale, z / part.noise.scale, design.seed) * part.noise.amplitude;
-
-      // Level areas: the strongest one wins, exactly level inside and blending out over its margin.
-      let level: { y: number; weight: number; ripple: number } | undefined;
-      for (const f of flats) {
-        let d: number;
-        if (f.shape === "ellipse") {
-          const [cx, cz] = [(f.x[0] + f.x[1]) / 2, (f.z[0] + f.z[1]) / 2];
-          const [rx, rz] = [Math.max((f.x[1] - f.x[0]) / 2, 0.5), Math.max((f.z[1] - f.z[0]) / 2, 0.5)];
-          const n = Math.hypot((x - cx) / rx, (z - cz) / rz);
-          d = n <= 1 ? 0 : (n - 1) * Math.min(rx, rz);
-        } else {
-          d = Math.hypot(Math.max(f.x[0] - x, 0, x - f.x[1]), Math.max(f.z[0] - z, 0, z - f.z[1]));
-        }
-        const weight = d <= 0 ? 1 : d >= f.margin ? 0 : 1 - d / f.margin;
-        if (weight > (level?.weight ?? 0)) level = { y: f.y, weight, ripple: f.ripple };
-      }
-      if (level) {
-        h = level.weight >= 1 ? level.y : h * (1 - level.weight) + level.y * level.weight;
-        if (level.ripple !== 0) h += valueNoise(x / 5, z / 5, design.seed + 3) * level.ripple * level.weight;
-      }
-
-      // Trails: a graded bench cut into the ground, rising or falling evenly from one end to the other.
-      trails.forEach(({ t, samples, box }) => {
-        if (!within(box, x, z)) return;
-        const { d, sample } = nearest(samples, x, z);
-        const half = t.width / 2;
-        if (d > half + t.margin) return;
-        const y = elevation(t.y, sample.t);
-        const w = d <= half ? 1 : smooth(1 - (d - half) / Math.max(t.margin, 1e-9));
-        h = h * (1 - w) + y * w;
-        if (d <= half) trailAt.set(key, t);
-        if (d <= half + 2) keepClear.add(key);
-      });
+      const base = natural(x, z);
+      let h = graded(x, z, true, base);
 
       // Rivers: a channel below the water level, with banks just above it.
-      rivers.forEach(({ r, samples, box }) => {
+      rivers.forEach(({ r, samples, box, levels }) => {
         if (!within(box, x, z)) return;
-        const { d, sample } = nearest(samples, x, z);
+        const { d, sample, i } = nearest(samples, x, z);
         const half = r.width / 2;
         if (d > half + r.margin) return;
-        const level = Math.round(elevation(r.y, sample.t));
+        const level = levels ? levels[i]! : Math.round(elevation(r.y!, sample.t));
         if (d <= half) {
-          h = level - r.depth;
+          h = levels ? Math.min(h, level - r.depth) : level - r.depth;
           const open = r.open.some(([a, b]) => sample.t >= a && sample.t <= b);
           const nearEdge = x <= 1 || z <= 1 || x >= width - 2 || z >= length - 2;
           waterAt.set(key, { river: r, level, frozen: !open || nearEdge });
         } else {
           const w = smooth(1 - (d - half) / Math.max(r.margin, 1e-9));
-          h = h * (1 - w) + (level + 1) * w;
+          const bank = h * (1 - w) + (level + 1) * w;
+          // A stream that follows the ground only cuts into it, so it never stands on an embankment.
+          h = levels ? Math.min(h, bank) : bank;
         }
         if (d <= half + 2) keepClear.add(key);
       });
 
       const top = Math.max(0, Math.min(height - 1, Math.round(h)));
+      const lift = top - Math.max(0, Math.min(height - 1, Math.round(base)));
+      if (lift > 0) raisedBy.set(key, lift);
       // Nothing grows or is built in the sea or right at its edge.
       if (part.sea && top <= part.sea.level) keepClear.add(key);
       row.push(top);
@@ -236,6 +292,7 @@ export function terrain(ctx: Ctx, part: Of<"terrain">): void {
       const t = trailAt.get(colKey(x, z));
       return t ? part.trails.indexOf(t) : undefined;
     },
+    raised: (x, z) => raisedBy.get(colKey(x, z)) ?? 0,
   });
 
   for (let z = z0; z <= z1; z++)

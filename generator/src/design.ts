@@ -200,10 +200,12 @@ const profile = z.array(z.tuple([z.number().min(0).max(1), z.number()])).min(2);
  * `steps` (a stairs block) climbs every one-block rise along it with a stair, so a steep path can be walked, not jumped.
  * `parapet` (a wall block) guards it wherever the ground beside it falls away 2 blocks or more: a ledge of rock at the
  * path's level with the wall on it, as a path along a cliff has.
+ * Without `y` it follows the ground, kept just under it and rising or falling at most 0.6 per block, so it cuts
+ * into the slope and is never carried on an embankment.
  */
 const trail = z.object({
   points: polyline,
-  y: profile,
+  y: profile.optional(),
   width: z.number().positive(),
   margin: z.number().nonnegative(),
   surface: block,
@@ -214,13 +216,14 @@ const trail = z.object({
 
 /**
  * A river along `points`, its water surface following the height profile `y`, `depth` deep and
- * `width` wide, with banks blending over `margin`. It is frozen (`ice` all the way down) except along
- * the `open` stretches, given as fractions of its length. Water never touches the volume edge, which
+ * `width` wide. Without `y` it follows the ground instead, running downhill from its first point in a
+ * groove cut into the slope, never on an embankment. Banks blend over `margin`. It is frozen (`ice` all
+ * the way down) except along the `open` stretches, given as fractions of its length. Water never touches the volume edge, which
  * would let it run out of a pasted structure, so the ends are always frozen.
  */
 const river = z.object({
   points: polyline,
-  y: profile,
+  y: profile.optional(),
   width: z.number().positive(),
   depth: z.number().int().positive(),
   margin: z.number().nonnegative(),
@@ -690,9 +693,15 @@ export const designSchema = z.object({
   /**
    * Walking it as a player: from the spawn to every agent spot and to each place in `to` (feet at `at`), and back,
    * without jumping (see `player.ts`). With `walk`, anything a player cannot walk is a design problem; without it
-   * (designs saved before this check), a warning.
+   * (designs saved before this check), a warning. Both ends of every trail are walked to as well; with `trails`
+   * a failure there is a problem, without it a warning.
    */
-  walk: z.object({ to: z.array(z.object({ name: z.string(), at: cell3 })).default([]) }).optional(),
+  walk: z.object({ to: z.array(z.object({ name: z.string(), at: cell3 })).default([]), trails: z.boolean().optional() }).optional(),
+  /**
+   * Checking the land for what no landscape has, such as trails and rivers carried on embankments. With `natural`,
+   * these are design problems; without it (designs saved before this check), warnings.
+   */
+  natural: z.boolean().optional(),
   /** Where the design goes in the world unless told otherwise (the corner at its layer 0). Default 0, 64, 0. */
   origin: z.tuple([int, int, int]).optional(),
   parts: z.array(partSchema),

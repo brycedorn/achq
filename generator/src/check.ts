@@ -37,6 +37,37 @@ function fullTop(state: string): boolean {
   return !/(_pane|iron_bars|_fence|_fence_gate|_wall|_carpet|lantern|end_rod|chain|_trapdoor|_door|flower_pot|potted_|candle|lever|_button|pressure_plate|daylight_detector|ladder|_rail|torch|bell|lectern|brewing_stand|_leaves|agentcraft:)/.test(name);
 }
 
+/** Built-up ground this high or more is an embankment; less is the shoulder of a path benched into a slope. */
+const EMBANKMENT = 4;
+
+/** Each connected stretch of ground built up `EMBANKMENT` or more above the land, with its highest column. */
+function embankments(raised: (x: number, z: number) => number, width: number, length: number) {
+  const seen = new Set<number>();
+  const out: { x: number; z: number; most: number; columns: number }[] = [];
+  for (let z = 0; z < length; z++)
+    for (let x = 0; x < width; x++) {
+      if (seen.has(x + z * width) || raised(x, z) < EMBANKMENT) continue;
+      const bank = { x, z, most: 0, columns: 0 };
+      const todo = [[x, z] as const];
+      seen.add(x + z * width);
+      while (todo.length) {
+        const [cx, cz] = todo.pop()!;
+        const lift = raised(cx, cz);
+        bank.columns++;
+        if (lift > bank.most) Object.assign(bank, { x: cx, z: cz, most: lift });
+        for (let dz = -1; dz <= 1; dz++)
+          for (let dx = -1; dx <= 1; dx++) {
+            const [nx, nz] = [cx + dx, cz + dz];
+            if (nx < 0 || nz < 0 || nx >= width || nz >= length || seen.has(nx + nz * width) || raised(nx, nz) < EMBANKMENT) continue;
+            seen.add(nx + nz * width);
+            todo.push([nx, nz]);
+          }
+      }
+      out.push(bank);
+    }
+  return out;
+}
+
 export function checkDesign(design: Design, warnings?: DesignProblem[]): DesignProblem[] {
   const problems: DesignProblem[] = [];
   const problem = (where: string, message: string): void => {
@@ -54,6 +85,14 @@ export function checkDesign(design: Design, warnings?: DesignProblem[]): DesignP
   for (const p of validateLayout(layout)) problem(p.anchor, p.message);
 
   for (const c of conflicts) problem(c.second, `overwrites a block of part '${c.first}' at ${c.cell.join(", ")}`);
+
+  // The land looks like land: no trail or river carried on an embankment. Problems for designs that ask for this
+  // check, warnings for those saved before it.
+  if (design.natural || warnings) {
+    const report = (where: string, message: string) => (design.natural ? problem(where, message) : warnings!.push({ where, message }));
+    for (const bank of embankments(rendered.raised, volume.width, volume.length))
+      report("embankment", `the ground is built up ${bank.most} blocks above the land at ${bank.x}, ${bank.z} (${bank.columns} columns): a trail or river there stands on an embankment no landscape has. Leave out its \`y\` so it follows the ground, or move it`);
+  }
 
   const walk = new Walk(volume);
   const spots = Object.entries(layout.anchors).filter(([name]) => isSpot(name));
@@ -177,6 +216,22 @@ export function checkDesign(design: Design, warnings?: DesignProblem[]): DesignP
     const report = (where: string, message: string) => (design.walk ? problem(where, message) : warnings!.push({ where, message }));
     const places = new Map<string, readonly [number, number, number]>([...targets, ...seats]);
     for (const t of design.walk?.to ?? []) places.set(t.name, t.at);
+    // Both ends of every trail, standing on its surface (or the stair on it), not on a roof built over it. Problems
+    // with `walk.trails`, warnings for designs saved before it.
+    const ends = new Set<string>();
+    for (const part of design.parts)
+      if (part.type === "terrain")
+        part.trails.forEach((t, i) => {
+          const own = new Set([t.surface, t.steps].filter((b) => b !== undefined));
+          for (const [end, [px, pz]] of [["start", t.points[0]!], ["end", t.points[t.points.length - 1]!]] as const) {
+            const [x, z] = [Math.round(px), Math.round(pz)];
+            let y = volume.height - 1;
+            while (y >= 0 && !own.has(parseState(volume.get(x, y, z)).name)) y--;
+            if (y < 0) continue;
+            ends.add(`${part.id} trail ${i + 1} ${end}`);
+            places.set(`${part.id} trail ${i + 1} ${end}`, [x, y + 1, z]);
+          }
+        });
     // The walk keeps to the HQ and the places named, with room round them.
     const b = layout.bounds;
     const xs = [...places.values()].map((p) => p[0]).concat(b ? [b.minX, b.maxX] : [0, volume.width - 1]);
@@ -191,12 +246,13 @@ export function checkDesign(design: Design, warnings?: DesignProblem[]): DesignP
     else {
       const { there, back } = player.explore(start);
       for (const [name, [x, y, z]] of places) {
+        const say = (message: string) => (ends.has(name) && !design.walk?.trails ? warnings?.push({ where: name, message }) : report(name, message));
         // On the spot; at a seat, on it or beside it.
         const near = seats.has(name) ? [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]] : [[0, 0]];
         const at = [...there.entries()].filter(([, s]) => near.some(([dx, dz]) => PlayerWalk.over(s, x + dx!, y, z + dz!))).map(([k]) => k);
         if (at.some((k) => back.has(k))) continue;
         if (at.length > 0) {
-          report(name, `a player can walk from the spawn to ${x}, ${y}, ${z} but not back without jumping`);
+          say(`a player can walk from the spawn to ${x}, ${y}, ${z} but not back without jumping`);
           continue;
         }
         // Where the walk got closest, to show where it is cut off.
@@ -207,7 +263,7 @@ export function checkDesign(design: Design, warnings?: DesignProblem[]): DesignP
           const d = Math.hypot(bx - x, (by - y) * 2, bz - z);
           if (d < best) [best, closest] = [d, [bx, by, bz]];
         }
-        report(name, `a player cannot walk from the spawn to ${x}, ${y}, ${z} without jumping; the walk gets closest at ${closest!.join(", ")}`);
+        say(`a player cannot walk from the spawn to ${x}, ${y}, ${z} without jumping; the walk gets closest at ${closest!.join(", ")}`);
       }
 
       // Guarded drops: wherever a player can walk off a built floor or a path into a fall that hurts, there must be a

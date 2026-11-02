@@ -76,6 +76,8 @@ export type Rendered = {
   onPath: (x: number, z: number) => boolean;
   /** Which trail a column is on, as `<terrain id>:<index>`, if any. */
   pathOf: (x: number, z: number) => string | undefined;
+  /** How many layers trails and rivers built a column up above the land as it lies. */
+  raised: (x: number, z: number) => number;
 };
 
 export function renderDesign(design: Design, { origin }: Placement): Rendered {
@@ -429,5 +431,6 @@ export function renderDesign(design: Design, { origin }: Placement): Rendered {
     }
     return undefined;
   };
-  return { volume: v, layout, conflicts, built: (x, y, z) => claimed(x, y, z) && !natural(x, y, z), natural, onPath, pathOf };
+  const raised = (x: number, z: number) => Math.max(0, ...[...ground.values()].map((g) => g.raised(x, z)));
+  return { volume: v, layout, conflicts, built: (x, y, z) => claimed(x, y, z) && !natural(x, y, z), natural, onPath, pathOf, raised };
 }

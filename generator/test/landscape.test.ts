@@ -57,6 +57,45 @@ describe("rivers", () => {
       for (let t = 0; t < 80; t++)
         for (const [x, z] of [[0, t], [79, t], [t, 0], [t, 79], [1, t], [78, t]] as const) expect(name(x, y, z), `${x},${y},${z}`).not.toBe("minecraft:water");
   });
+
+  describe("without a height profile", () => {
+    // A concave slope, steep then gentle, with a bump and a trail across the stream's way: a straight profile would stand
+    // on an embankment, and levels taken before the trail is graded would stand above it.
+    const slope = (rivers: unknown[]) =>
+      renderDesign(
+        parseDesign({
+          name: "t", version: 1, seed: 2, size: [40, 90, 80], shell: { kind: "none" },
+          parts: [{
+            type: "terrain", id: "ground", x: [0, 39], z: [0, 79], grid: [[70, 70], [30, 30], [20, 20]], peaks: [{ at: [20, 50], height: 6, radius: 6 }],
+            trails: [{ points: [[0, 40], [39, 40]], y: [[0, 27], [1, 27]], width: 3, margin: 2, surface: "minecraft:gravel" }],
+            rivers, surface: "minecraft:snow_block", rock: "minecraft:stone", base: "minecraft:stone",
+          }],
+        }),
+        { origin: [0, 0, 0] },
+      ).volume;
+    const bare = slope([]);
+    const cut = slope([{ points: [[20, 3], [20, 76]], width: 5, depth: 2, margin: 3, bed: "minecraft:gravel", ice: "minecraft:packed_ice" }]);
+    const top = (v: typeof bare, x: number, z: number, solid = false) => {
+      let y = v.height - 1;
+      while (y > 0 && (v.get(x, y, z) === "minecraft:air" || (solid && /ice|water/.test(v.get(x, y, z))))) y--;
+      return y;
+    };
+
+    it("follow the ground, cutting into it and never raising it, ice included", () => {
+      for (let z = 0; z < 80; z++) for (let x = 0; x < 40; x++) expect(top(cut, x, z), `${x},${z}`).toBeLessThanOrEqual(top(bare, x, z));
+      expect(top(cut, 20, 40)).toBe(top(bare, 20, 40) - 1); // a step down off the trail onto the ice
+      expect(top(cut, 20, 50, true)).toBeLessThan(top(bare, 20, 50) - 2); // a groove through the bump
+    });
+
+    it("run downhill from the first point, never rising", () => {
+      let last = Infinity;
+      for (let z = 3; z <= 76; z++) {
+        expect(cut.get(20, top(cut, 20, z), z), `z=${z}`).toBe("minecraft:packed_ice");
+        expect(top(cut, 20, z), `z=${z}`).toBeLessThanOrEqual(last);
+        last = top(cut, 20, z);
+      }
+    });
+  });
 });
 
 describe("trails", () => {
@@ -74,6 +113,68 @@ describe("trails", () => {
 
   it("keep trees clear of themselves", () => {
     for (let x = 7; x <= 13; x++) for (let z = 3; z <= 37; z++) for (let y = 21; y < 40; y++) expect(name(x, y, z), `${x},${y},${z}`).not.toBe("minecraft:spruce_log");
+  });
+
+  describe("across a valley", () => {
+    // Down one side of a valley and up the other: a level profile would carry the path across on an embankment.
+    const valley = (y?: unknown, natural?: boolean) =>
+      parseDesign({
+        name: "t", version: 1, seed: 2, size: [40, 60, 80], shell: { kind: "none" }, natural,
+        parts: [{
+          type: "terrain", id: "ground", x: [0, 39], z: [0, 79], grid: [[40, 40], [12, 12], [40, 40]],
+          trails: [{ points: [[20, 2], [20, 77]], ...(y ? { y } : {}), width: 3, margin: 3, surface: "minecraft:gravel" }],
+          surface: "minecraft:snow_block", rock: "minecraft:stone", base: "minecraft:stone",
+        }],
+      });
+    const level = [[0, 40], [1, 40]];
+
+    it("follow the ground without a height profile, never built up and no steeper than 0.6", () => {
+      const r = renderDesign(valley(), { origin: [0, 0, 0] });
+      for (let z = 0; z < 80; z++) for (let x = 0; x < 40; x++) expect(r.raised(x, z), `${x},${z}`).toBe(0);
+      const top = (z: number) => {
+        let y = 59;
+        while (y > 0 && r.volume.get(20, y, z) === "minecraft:air") y--;
+        return y;
+      };
+      for (let z = 2; z < 77; z++) expect(Math.abs(top(z + 1) - top(z)), `z=${z}`).toBeLessThanOrEqual(1);
+      expect(top(40)).toBeLessThanOrEqual(13); // down at the valley floor, not carried over it
+    });
+
+    it("are reported as embankments when a profile carries them over the land", () => {
+      const r = renderDesign(valley(level), { origin: [0, 0, 0] });
+      expect(r.raised(20, 40)).toBeGreaterThan(20);
+      const banks = (problems: { where: string }[]) => problems.filter((p) => p.where === "embankment");
+      expect(banks(checkDesign(valley(level, true)))).toHaveLength(1);
+      const warnings: { where: string; message: string }[] = [];
+      expect(banks(checkDesign(valley(level), warnings))).toEqual([]); // saved before the check: a warning
+      expect(banks(warnings)).toHaveLength(1);
+      expect(banks(checkDesign(valley(undefined, true)))).toEqual([]);
+    });
+
+    it("are walked from end to end and back, which takes a stair on every rise", () => {
+      const r = renderDesign(valley(), { origin: [0, 0, 0] });
+      let top = 59;
+      while (top > 0 && r.volume.get(20, top, 2) === "minecraft:air") top--;
+      const walked = (steps: boolean, trails: boolean, warnings?: { where: string; message: string }[]) => {
+        const d = parseDesign({
+          name: "t", version: 1, seed: 2, size: [40, 60, 80], floorY: top + 1, shell: { kind: "none" }, walk: { to: [], trails },
+          parts: [
+            {
+              type: "terrain", id: "ground", x: [0, 39], z: [0, 79], grid: [[40, 40], [12, 12], [40, 40]],
+              trails: [{ points: [[20, 2], [20, 77]], width: 3, margin: 3, surface: "minecraft:gravel", ...(steps ? { steps: "minecraft:cobblestone_stairs" } : {}) }],
+              surface: "minecraft:snow_block", rock: "minecraft:stone", base: "minecraft:stone",
+            },
+            { type: "spot", id: "spawn", anchor: "spawn", at: [20, 2], look: "south" },
+          ],
+        });
+        return checkDesign(d, warnings).filter((p) => /trail 1 (start|end)$/.test(p.where));
+      };
+      expect(walked(false, true).map((p) => p.message)).toEqual([expect.stringContaining("without jumping")]);
+      const warnings: { where: string; message: string }[] = [];
+      expect(walked(false, false, warnings)).toEqual([]); // saved before the check: a warning
+      expect(warnings.filter((p) => /trail 1 end$/.test(p.where))).toHaveLength(1);
+      expect(walked(true, true)).toEqual([]);
+    });
   });
 });
 

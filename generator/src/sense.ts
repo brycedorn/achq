@@ -29,6 +29,12 @@ export function senseChecks(design: Design, rendered: Rendered, player: PlayerWa
   for (const s of there.values()) standing.add(`${Math.floor(s.qx / 4)},${Math.floor(s.f * 2 + 1e-6)},${Math.floor(s.qz / 4)}`);
   /** Whether a player stands in the block (x, z) with their feet within the block layer `y` (or half a block below). */
   const reached = (x: number, y: number, z: number) => [2 * y - 1, 2 * y, 2 * y + 1].some((h) => standing.has(`${x},${h},${z}`));
+  /** The highest solid block in a column. */
+  const topAt = (x: number, z: number) => {
+    let y = v.height - 1;
+    while (y > 0 && !solid(get(x, y, z))) y--;
+    return y;
+  };
   /** The top of the ground or floor in a column at about layer y: the layer of the block stood on. */
   const surface = (x: number, z: number, y: number) => {
     for (let t = y + 2; t >= y - 3; t--) if (solid(get(x, t, z)) && !solid(get(x, t + 1, z))) return t;
@@ -46,7 +52,7 @@ export function senseChecks(design: Design, rendered: Rendered, player: PlayerWa
           const [x, z] = [Math.round(a[0]), Math.round(a[1])];
           const [dx, dz] = [a[0] - b[0], a[1] - b[1]];
           const dir: [number, number] = Math.abs(dx) >= Math.abs(dz) ? [Math.sign(dx), 0] : [0, Math.sign(dz)];
-          const y = surface(x, z, Math.round(t.y[a === pts[0] ? 0 : t.y.length - 1]![1]));
+          const y = surface(x, z, t.y ? Math.round(t.y[a === pts[0] ? 0 : t.y.length - 1]![1]) : topAt(x, z));
           if (y !== undefined) ends.push({ where: `${part.id} trail ${i + 1}`, x, z, dir, y, own: `${part.id}:${i}` });
         }
       });

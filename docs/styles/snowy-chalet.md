@@ -64,3 +64,5 @@ Reference images: `references/snowy-chalet/` (five photos and concept renders). 
 - White light: it makes the interior look like an office. Everything inside should be amber.
 - Dense interiors. These are cozy but open: a vaulted hall with a few clusters of furniture.
 - Symmetry. Stagger the desks, vary the stone, keep the trees uneven.
+- Earthworks no mountain has. v8 and v9 carried their streams and the path to the village on embankments up to 36 blocks high, which read as aqueducts and causeways. Streams start in hollows and run down the fall line; paths and streams follow the ground (leave out their `y`). See rule 10 in `docs/SPEC.md`.
+- A mountain path with no stairs. v8 to v10 left out the path's `steps`, so walking back up from the village meant jumping every rise. Paths on a slope take `steps` (`cobblestone_stairs`), and `walk.trails` checks them.
