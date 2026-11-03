@@ -35,6 +35,12 @@ export function senseChecks(design: Design, rendered: Rendered, player: PlayerWa
     while (y > 0 && !solid(get(x, y, z))) y--;
     return y;
   };
+  /** The layer of a trail's own surface (or the stair on it) in a column, not a deck or a crown built over it. */
+  const trailTop = (x: number, z: number, t: { surface: string; steps?: string | undefined }) => {
+    let y = v.height - 1;
+    while (y > 0 && name(get(x, y, z)) !== t.surface && name(get(x, y, z)) !== t.steps) y--;
+    return y > 0 ? y : topAt(x, z);
+  };
   /** The top of the ground or floor in a column at about layer y: the layer of the block stood on. */
   const surface = (x: number, z: number, y: number) => {
     for (let t = y + 2; t >= y - 3; t--) if (solid(get(x, t, z)) && !solid(get(x, t + 1, z))) return t;
@@ -52,7 +58,7 @@ export function senseChecks(design: Design, rendered: Rendered, player: PlayerWa
           const [x, z] = [Math.round(a[0]), Math.round(a[1])];
           const [dx, dz] = [a[0] - b[0], a[1] - b[1]];
           const dir: [number, number] = Math.abs(dx) >= Math.abs(dz) ? [Math.sign(dx), 0] : [0, Math.sign(dz)];
-          const y = surface(x, z, t.y ? Math.round(t.y[a === pts[0] ? 0 : t.y.length - 1]![1]) : topAt(x, z));
+          const y = surface(x, z, t.y ? Math.round(t.y[a === pts[0] ? 0 : t.y.length - 1]![1]) : trailTop(x, z, t));
           if (y !== undefined) ends.push({ where: `${part.id} trail ${i + 1}`, x, z, dir, y, own: `${part.id}:${i}` });
         }
       });

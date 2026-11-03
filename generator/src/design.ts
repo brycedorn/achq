@@ -305,15 +305,105 @@ const treesPart = z.object({
    * `spruce`: tiered, snow on each tier (the default). `cypress`: a tall narrow column. `pine`: a stone pine,
    * a bare trunk under a flat umbrella crown. `olive`: short and round. Only spruce uses `snow` and `dead`.
    */
-  style: z.enum(["spruce", "cypress", "pine", "olive"]).default("spruce"),
+  /**
+   * `jungle`: a rainforest canopy tree, a trunk 2 x 2 when tall, a few lumpy crowns. `giant`: an emergent kapok
+   * with buttress roots, a trunk `girth` blocks in radius, limbs and a wide crown high up. `bush`: a leafy mound on a log.
+   */
+  style: z.enum(["spruce", "cypress", "pine", "olive", "jungle", "giant", "bush"]).default("spruce"),
   at: z.array(cell).default([]),
   scatter: scatterSchema.optional(),
   dead: z.number().min(0).max(1).default(0),
   trunk: block,
   leaves: block,
   snow: block.optional(),
-  minHeight: z.number().int().min(4),
-  maxHeight: z.number().int().min(4),
+  minHeight: z.number().int().min(2),
+  maxHeight: z.number().int().min(2),
+  /** Trunk radius of a `giant` (its height sets it when left out). */
+  girth: z.number().positive().optional(),
+  /** The fraction of a jungle or giant crown's lower edge that trails vines, and how far they hang at most. */
+  vines: z.object({ amount: z.number().min(0).max(1), length: z.number().int().positive(), block: block.default("minecraft:vine") }).optional(),
+  /** Cocoa pods on a fraction of the trunk faces of jungle and giant trees, up to 8 blocks off the ground. */
+  cocoa: z.number().min(0).max(1).default(0),
+  /** Boxes `[x0, y0, z0, x1, y1, z1]` kept free of leaves, limbs and vines: rooms, bridges, a stairway. The trunk still passes. */
+  clear: z.array(z.tuple([int, int, int, int, int, int])).default([]),
+});
+
+/**
+ * Low plants over the ground of a terrain part, inside `x` and `z`: on a fraction `density` of the open columns,
+ * one of `kinds` picked by `weight`. `single` is one block (a fern, a flower), `double` a two-block plant (its
+ * lower and upper halves), `stalk` a column `height` tall (bamboo, sugar cane). Plants keep off paths and rivers
+ * and never stand where a part has built.
+ */
+const plantsPart = z.object({
+  ...common,
+  type: z.literal("plants"),
+  on: z.string(),
+  x: cell,
+  z: cell,
+  density: z.number().min(0).max(1),
+  maxSlope: z.number().int().nonnegative().default(2),
+  exclude: z.array(z.tuple([int, int, int, int])).default([]),
+  /** Group the plants with value noise: they grow only where it is above `threshold`. */
+  clusters: z.object({ scale: z.number().positive(), threshold: z.number() }).optional(),
+  kinds: z
+    .array(
+      z.object({
+        block,
+        weight: z.number().positive(),
+        form: z.enum(["single", "double", "stalk"]).default("single"),
+        height: cell.default([1, 1]),
+        /** A block for the top of a stalk (bamboo with leaves). */
+        top: block.optional(),
+      }),
+    )
+    .min(1),
+});
+
+/**
+ * A rope bridge from `from` to `to` (the first and last deck cells, in a line along X or along Z), `width`
+ * wide. The deck sags `sag` blocks in the middle and climbs every one-block rise with a `steps` stair, so a
+ * player walks it and an agent steps it. Fence `rail`s run along both sides, joined to each other and to any
+ * fence they meet at the ends; `posts` stand at both ends; the space over the deck is carved clear.
+ */
+const bridgePart = z.object({
+  ...common,
+  type: z.literal("bridge"),
+  from: cell3,
+  to: cell3,
+  width: z.number().int().positive().default(2),
+  sag: z.number().nonnegative().default(1),
+  deck: block,
+  steps: block,
+  rail: block,
+  posts: block.optional(),
+  /** Lanterns hung under the rail every `every` blocks, alternating sides. */
+  lanterns: z.object({ block, every: z.number().int().positive() }).optional(),
+});
+
+/**
+ * A square spiral stair round a column at `center`, turning `turn` (seen from above) as it goes down from the
+ * landing at layer `top` to the ground landing at layer `bottom`. The stair is `width` wide, its inner edge
+ * `inner` blocks out from the centre (Chebyshev distance). It starts on the `start` side of the column; flat
+ * landings at the corners (a `lamp` on each one's corner post); the outer edge has a fence `rail` and the inner edge a ring of `core` blocks (the
+ * column, where nothing stands yet). Each step has a stringer under it, and the room over the steps is carved.
+ */
+const spiralPart = z.object({
+  ...common,
+  type: z.literal("spiral"),
+  center: cell,
+  inner: z.number().int().positive(),
+  width: z.number().int().positive().default(2),
+  top: int,
+  bottom: int,
+  start: direction,
+  turn: z.enum(["clockwise", "counterclockwise"]).default("clockwise"),
+  steps: block,
+  landing: block,
+  rail: block,
+  core: block,
+  stringer: block,
+  /** A lantern on the outer corner post of every landing. */
+  lamp: block.optional(),
 });
 
 /** Snow-capped boulders, `minSize` to `maxSize` blocks across, scattered like trees. */
@@ -555,6 +645,9 @@ const spherePart = z.object({
 });
 
 export const partSchema = z.discriminatedUnion("type", [
+  plantsPart,
+  bridgePart,
+  spiralPart,
   cylinderPart,
   spherePart,
   hullPart,
@@ -700,7 +793,7 @@ export function parseDesign(json: unknown): Design {
   }
   const terrains = new Set(design.parts.filter((p) => p.type === "terrain").map((p) => p.id));
   for (const part of design.parts) {
-    if ((part.type === "trees" || part.type === "village" || part.type === "boulders" || part.type === "hillside" || part.type === "beach") && !terrains.has(part.on)) throw new Error(`${part.type} '${part.id}' stands on '${part.on}', which is not a terrain part`);
+    if ((part.type === "trees" || part.type === "plants" || part.type === "village" || part.type === "boulders" || part.type === "hillside" || part.type === "beach") && !terrains.has(part.on)) throw new Error(`${part.type} '${part.id}' stands on '${part.on}', which is not a terrain part`);
     if (part.type === "taskWall" && (part.facing === "east" || part.facing === "west" ? typeof part.x !== "number" || typeof part.z === "number" : typeof part.z !== "number" || typeof part.x === "number"))
       throw new Error(`taskWall '${part.id}': facing east or west takes an x and a z range; facing north or south, a z and an x range`);
     if (part.type === "trees" && part.at.length === 0 && !part.scatter) throw new Error(`trees '${part.id}' have neither 'at' nor 'scatter'`);

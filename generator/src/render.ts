@@ -7,6 +7,8 @@ import { deckhouse, hull } from "./hull.js";
 import { beach, hillside } from "./hillside.js";
 import { restaurant } from "./town.js";
 import { cylinder, sphere } from "./shapes.js";
+import { plants } from "./rainforest.js";
+import { bridge, spiral } from "./walkways.js";
 import { boulders, type Ctx, type Ground, terrain, trees, village } from "./landscape.js";
 
 const AIR = "minecraft:air";
@@ -388,6 +390,15 @@ export function renderDesign(design: Design, { origin }: Placement): Rendered {
       case "sphere":
         sphere(ctx, part);
         break;
+      case "plants":
+        plants(ctx, part);
+        break;
+      case "bridge":
+        bridge(ctx, part);
+        break;
+      case "spiral":
+        spiral(ctx, part);
+        break;
       case "fireplace": {
         // `d` points from the room into the wall.
         const d = part.faces === "west" ? 1 : -1;
@@ -425,7 +436,7 @@ export function renderDesign(design: Design, { origin }: Placement): Rendered {
     ? { minX: ox + hq[0], minY: oy + hq[1], minZ: oz + hq[2], maxX: ox + hq[3], maxY: oy + hq[4], maxZ: oz + hq[5] }
     : { minX: ox, minY: oy, minZ: oz, maxX: ox + width - 1, maxY: oy + height - 1, maxZ: oz + length - 1 };
   const onPath = (x: number, z: number) => [...ground.values()].some((g) => g.onPath(x, z));
-  const wild = new Set(design.parts.filter((p) => p.type === "trees" || p.type === "boulders").map((p) => p.id));
+  const wild = new Set(design.parts.filter((p) => p.type === "trees" || p.type === "boulders" || p.type === "plants").map((p) => p.id));
   const natural = (x: number, y: number, z: number) => claimed(x, y, z) && wild.has(claims.get(x + width * (z + length * y))!);
   const pathOf = (x: number, z: number) => {
     for (const [id, g] of ground) {

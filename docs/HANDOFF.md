@@ -1,5 +1,11 @@
 # ACHQ handoff, 2026-10-10 (late evening), updated 2026-10-20
 
+## Update, 2026-11-02 (later)
+
+- New design `jungle-treehouse`: three cabins in giant emergent trees above a rainforest canopy, rope bridges, a spiral stair round the west trunk to the forest floor, a switchback trail to a river jetty. See SPEC "Fifth example". Plan: `_plans/jungle-treehouse.md`.
+- New generator pieces: `trees` styles `jungle`, `giant`, `bush` (with `girth`, `vines`, `cocoa`, `clear`), and parts `bridge`, `spiral`, `plants` (`src/rainforest.ts`, `src/walkways.ts`). Sense judges a trail's end at its own surface (a trail under a deck). Other designs' golden hashes are unchanged.
+- `check` passes, walked to the stair foot and the jetty and back; trail lift 0, cut at most 3 at the hairpins. Not verified in game.
+
 ## Update, 2026-11-02
 
 - No more design versions: each design is one file, `designs/<name>.json` (git is the history). `--version` and the schema's `version` are gone; the layout `revision` is a fingerprint of the design. `tools/make-*-vN.py` are deleted. The small chalets the renderer tests use are `generator/test/fixtures/*.json`.

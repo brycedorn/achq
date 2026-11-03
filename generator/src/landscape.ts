@@ -1,5 +1,6 @@
 import { type Design, type Direction, type Part } from "./design.js";
 import { type Volume } from "./schematic.js";
+import { rainforestTree } from "./rainforest.js";
 
 type Vec3 = readonly [number, number, number];
 type Pt = readonly [number, number];
@@ -431,6 +432,14 @@ export function trees(ctx: Ctx, part: Of<"trees">): void {
     ...scattered.map((at) => ({ at, dead: hash2(at[0], at[1], design.seed + 5) < part.dead })),
   ];
   const span = Math.max(part.maxHeight - part.minHeight + 1, 1);
+  if (part.style === "jungle" || part.style === "giant" || part.style === "bush") {
+    for (const { at: [tx, tz] } of sites) {
+      const base = g.height(tx, tz);
+      if (base === undefined) throw new RangeError(`tree at ${tx}, ${tz} is outside the terrain '${part.on}'`);
+      rainforestTree(ctx, part, g, tx, base, tz, part.minHeight + Math.floor(hash2(tx, tz, design.seed) * span));
+    }
+    return;
+  }
   if (part.style !== "spruce") {
     for (const { at: [tx, tz] } of sites) {
       const base = g.height(tx, tz);
