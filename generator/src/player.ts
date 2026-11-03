@@ -1,4 +1,7 @@
+import { HALF_WIDTH, HEIGHT, type Shape, shapes, STEP } from "./blocks.js";
 import { parseState, type Volume } from "./schematic.js";
+
+export { HALF_WIDTH, HEIGHT, shapes, STEP };
 
 /**
  * Walking as a player does, not as an agent does. AgentCraft's agents hop up a whole block; a player walking (not
@@ -10,66 +13,11 @@ import { parseState, type Volume } from "./schematic.js";
  * walked through. As in the agents' check, a block it does not know is a full block, which only makes it stricter.
  */
 
-/** How far a player steps up without jumping, how tall and how wide a player is. */
-export const STEP = 0.6;
-export const HEIGHT = 1.8;
-export const HALF_WIDTH = 0.3;
 /** A fall longer than this hurts a player (damage is the fall less 3): an edge with one must have a railing or a wall. */
 export const DROP = 3;
 /** The grid a player moves on: four positions to a block each way. */
 const GRID = 4;
 const EPS = 1e-6;
-
-/** A solid box, in block units; `standable` when its top can be stood on. */
-type Shape = { x0: number; z0: number; x1: number; z1: number; lo: number; hi: number; standable: boolean };
-
-const full = (lo: number, hi: number, standable = true): Shape => ({ x0: 0, z0: 0, x1: 1, z1: 1, lo, hi, standable });
-const centred = (r: number, lo: number, hi: number, standable = true): Shape => ({ x0: 0.5 - r, z0: 0.5 - r, x1: 0.5 + r, z1: 0.5 + r, lo, hi, standable });
-
-/** A post `r` from the middle (when `post`) and an arm `a` wide out to each joined side: bars, panes, fences, walls. */
-function postAndArms(p: Record<string, string>, r: number, a: number, hi: number, post: boolean): Shape[] {
-  const out: Shape[] = post ? [centred(r, 0, hi, false)] : [];
-  const joined = (d: string) => p[d] !== undefined && p[d] !== "false" && p[d] !== "none";
-  if (joined("north")) out.push({ x0: 0.5 - a, x1: 0.5 + a, z0: 0, z1: 0.5, lo: 0, hi, standable: false });
-  if (joined("south")) out.push({ x0: 0.5 - a, x1: 0.5 + a, z0: 0.5, z1: 1, lo: 0, hi, standable: false });
-  if (joined("west")) out.push({ x0: 0, x1: 0.5, z0: 0.5 - a, z1: 0.5 + a, lo: 0, hi, standable: false });
-  if (joined("east")) out.push({ x0: 0.5, x1: 1, z0: 0.5 - a, z1: 0.5 + a, lo: 0, hi, standable: false });
-  return out;
-}
-
-/** No collision for a player: they walk through plants and signs, open doors, climb ladders. */
-const NONE = /(_button|_sign|_pressure_plate|_banner|_door|chain|ladder|vine|short_grass|tall_grass|torch|redstone_wire|potatoes|carrots|beetroots|wheat|_sapling|tripwire|:air|:cave_air|:void_air|:light)$/;
-const FLUID = /^minecraft:(water|lava|bubble_column)$/;
-
-/** The solid boxes of a block, in its own coordinates (0 to 1 across, and up from its base). */
-export function shapes(state: string): Shape[] {
-  const { name, properties: p } = parseState(state);
-  if (name.endsWith("flower_pot") || name.startsWith("minecraft:potted_")) return [centred(0.1875, 0, 0.375)];
-  if (name === "minecraft:fern" || NONE.test(name)) return [];
-  if (FLUID.test(name)) return [full(0, 1, false)];
-  if (name.endsWith("_trapdoor")) return p["open"] === "true" ? [] : [p["half"] === "top" ? full(0.8125, 1) : full(0, 0.1875)];
-  if (name.endsWith("_slab")) return [p["type"] === "top" ? full(0.5, 1) : full(0, p["type"] === "double" ? 1 : 0.5)];
-  if (name.endsWith("_stairs")) {
-    // The tall half is on the side the stair faces: the way up.
-    const half = ({ north: { z1: 0.5 }, south: { z0: 0.5 }, west: { x1: 0.5 }, east: { x0: 0.5 } } as Record<string, Partial<Shape>>)[p["facing"] ?? "north"] ?? {};
-    const top = p["half"] === "top";
-    return [top ? full(0.5, 1) : full(0, 0.5), { ...full(top ? 0 : 0.5, top ? 0.5 : 1), ...half }];
-  }
-  if (name.endsWith("_carpet")) return [full(0, 0.0625)];
-  if (name.endsWith("_fence_gate")) return p["open"] === "true" ? [] : [full(0, 1.5, false)];
-  if (name.endsWith("_fence")) return postAndArms(p, 0.125, 0.125, 1.5, true);
-  if (name.endsWith("_wall")) return postAndArms(p, 0.25, 0.1875, 1.5, p["up"] !== "false");
-  if (name.endsWith("_pane") || name === "minecraft:iron_bars") return postAndArms(p, 0.0625, 0.0625, 1, true);
-  if (name === "minecraft:end_rod" || name === "minecraft:lightning_rod") return [centred(0.125, 0, 1, false)];
-  if (name === "minecraft:lantern" || name === "minecraft:soul_lantern")
-    return [p["hanging"] === "true" ? centred(0.1875, 0.0625, 0.625, false) : centred(0.1875, 0, 0.5625)];
-  if (name === "minecraft:bell") return [centred(0.25, 0.25, 1, false)];
-  if (name.endsWith("campfire")) return [full(0, 0.4375)];
-  if (name === "minecraft:daylight_detector") return [full(0, 0.375)];
-  if (name.endsWith("chest")) return [centred(0.4375, 0, 0.875)];
-  if (name === "minecraft:farmland") return [full(0, 0.9375)];
-  return [full(0, 1)];
-}
 
 /** Where a player is: the middle of their box at (qx, qz) in quarter blocks, and the height of their feet. */
 export type Spot = { qx: number; qz: number; f: number };

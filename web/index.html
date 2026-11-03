@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ACHQ Walk</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #9ec7eb; font: 13px/1.4 ui-monospace, Menlo, monospace; color: #fff; }
+      canvas { display: block; }
+      #crosshair { position: fixed; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; pointer-events: none; }
+      #crosshair::before, #crosshair::after { content: ""; position: absolute; background: #fff; mix-blend-mode: difference; }
+      #crosshair::before { left: 6px; top: 0; width: 2px; height: 14px; }
+      #crosshair::after { left: 0; top: 6px; width: 14px; height: 2px; }
+      #hud { position: fixed; left: 8px; top: 8px; padding: 6px 8px; background: rgb(0 0 0 / 0.45); border-radius: 4px; white-space: pre; pointer-events: none; }
+      #overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgb(0 0 0 / 0.5); text-align: center; }
+      #overlay[hidden] { display: none; }
+      #overlay .card { padding: 20px 24px; background: rgb(20 24 30 / 0.92); border-radius: 8px; max-width: 420px; }
+      #overlay h1 { margin: 0 0 8px; font-size: 18px; }
+      #overlay a { display: block; color: #9fd3ff; padding: 3px 0; }
+      #overlay .keys { color: #c8d0da; margin-top: 10px; }
+      progress { width: 100%; }
+    </style>
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+    <div id="crosshair"></div>
+    <div id="hud"></div>
+    <div id="overlay"><div class="card" id="card">Loading...</div></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
