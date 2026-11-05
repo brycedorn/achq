@@ -229,9 +229,9 @@ describe("snowy-chalet", () => {
   const world = loadDesign("snowy-chalet");
   const { volume } = renderDesign(world, { origin: [0, 0, 0] });
 
-  it("is the chalet on a shoulder above a river valley, and passes every check", () => {
+  // Every check is in designs.test.ts, which holds every design to all of them.
+  it("is the chalet on a shoulder above a river valley", () => {
     expect(world.floorY).toBe(72);
-    expect(checkDesign(world)).toEqual([]);
   });
 
   it("sends the river away to the south-east, frozen where it leaves the world", () => {

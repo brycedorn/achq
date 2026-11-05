@@ -1,14 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { checkDesign } from "../src/check.js";
 import { loadDesign } from "../src/designs.js";
 import { renderDesign } from "../src/render.js";
 
 describe("lighthouse", () => {
   const design = loadDesign("lighthouse");
 
-  it("passes every check, walked as a player: every room, the gallery and the jetty, there and back", () => {
+  // Every check (and so the walk there and back) is in designs.test.ts.
+  it("is walked as a player to every room, the gallery and the jetty", () => {
     expect(design.walk?.to.map((t) => t.name)).toEqual(["gallery", "jetty"]);
-    expect(checkDesign(design)).toEqual([]);
   });
 
   it("puts stairs on the rises of the cliff path down to the jetty", () => {
