@@ -794,9 +794,10 @@ function villageVaried(ctx: Ctx, part: Of<"village">): void {
     set(lx, base + 3, lz, part.lantern);
     // A stone chimney through the roof on lodges and some cottages.
     if (part.chimneys && (lodge || rand(29) < 0.35)) {
+      // Smoking: a lit campfire hidden inside its top, under an open mouth.
       const [hx, hz] = at(half, b - 2);
-      fill([hx, base + wallH + 1, hz], [hx, ridgeY + 2, hz], part.stone);
-      set(hx, ridgeY + 3, hz, part.ridge);
+      fill([hx, base + wallH + 1, hz], [hx, ridgeY + 1, hz], part.stone);
+      set(hx, ridgeY + 2, hz, "minecraft:campfire[lit=true]");
     }
     taken.push([x0, z0, x1, z1]);
     placed++;

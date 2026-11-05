@@ -180,6 +180,7 @@ export function plants(ctx: Ctx, part: Of<"plants">): void {
       if (h === undefined || g.keepClear.has(x + z * 100_000)) continue;
       const slope = Math.max(...[[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dz]) => Math.abs((g.height(x + dx!, z + dz!) ?? h) - h)));
       if (slope > part.maxSlope || !open(x, h + 1, z) || /water|ice|lava/.test(v.get(x, h, z)) || v.get(x, h, z) === AIR) continue;
+      if (ctx.claimed(x, h, z)) continue; // plants grow on the ground, not on a floor laid over it
       let pick = hash2(x, z, design.seed + 202) * total;
       const kind = part.kinds.find((k) => (pick -= k.weight) < 0) ?? part.kinds[part.kinds.length - 1]!;
       if (kind.form === "single") set(x, h + 1, z, kind.block);
