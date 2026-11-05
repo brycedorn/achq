@@ -19,11 +19,19 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: generator/package-lock.json
+          cache-dependency-path: |
+            generator/package-lock.json
+            web/package-lock.json
       - run: npm ci
       - run: npx tsc --noEmit
       - name: Test, with coverage
         run: npx vitest run --coverage --coverage.reporter=text --coverage.reporter=json-summary --reporter=default --reporter=json --outputFile.json=test-results.json
+      - name: Browser walk-through (web/)
+        working-directory: web
+        run: |
+          npm ci
+          npx tsc --noEmit
+          npx vitest run
       # Badge data for the README, read by shields.io: written to the `badges` branch on every push to main.
       - name: Publish badges
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

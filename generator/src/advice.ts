@@ -1,6 +1,6 @@
 import { type Design } from "./design.js";
 import { type Rendered } from "./render.js";
-import { parseState } from "./schematic.js";
+import { parseState } from "./state.js";
 
 /**
  * Advice on taste, not rules: a design is not wrong for any of it, so `check` prints these as notes and passes. A

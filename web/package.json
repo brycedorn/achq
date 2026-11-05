@@ -1,0 +1,28 @@
+{
+  "name": "achq-web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Walk an ACHQ design in the browser, without Minecraft.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "vite --open",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "fallbacks": "vite-node scripts/fallbacks.ts"
+  },
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/three": "^0.170.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0",
+    "vite-node": "^3.0.0",
+    "vitest": "^3.0.0"
+  }
+}

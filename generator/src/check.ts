@@ -1,7 +1,7 @@
 import { CAST_IDS, SHARED_STATIONS, validateLayout } from "./anchors.js";
 import { type Design, YAW } from "./design.js";
 import { type Advice, adviseDesign } from "./advice.js";
-import { invalidState } from "./blocks.js";
+import { invalidState } from "./registry.js";
 import { renderDesign } from "./render.js";
 import { blockOf, PlayerWalk } from "./player.js";
 import { opaque, senseChecks } from "./sense.js";

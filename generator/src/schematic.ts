@@ -1,5 +1,6 @@
 import { gzipSync } from "node:zlib";
 import { type Compound, type NBT, type String as NbtString, writeUncompressed } from "prismarine-nbt";
+import { parseState } from "./state.js";
 
 const str = (value: string): NbtString => ({ type: "string", value });
 const intList = (value: number[]): Compound["value"][string] => ({ type: "list", value: { type: "int", value } });
@@ -79,6 +80,11 @@ export class Volume {
   /** The block state for a palette id. */
   stateOf(id: number): string {
     return this.states[id] ?? AIR;
+  }
+
+  /** Palette ids of every cell, indexed `x + z * width + y * width * length`. Shared, not copied. */
+  get ids(): Uint16Array {
+    return this.cells;
   }
 
   /** Number of distinct block states placed so far, air included. */
@@ -250,17 +256,7 @@ export class Volume {
 
 
 /** Split `minecraft:oak_stairs[facing=north,half=bottom]` into a name and its properties. */
-export function parseState(state: string): { name: string; properties: Record<string, string> } {
-  const open = state.indexOf("[");
-  if (open === -1) return { name: state, properties: {} };
-  const props = state.slice(open + 1, state.endsWith("]") ? -1 : undefined);
-  const properties: Record<string, string> = {};
-  for (const pair of props.split(",")) {
-    const [key, value] = pair.split("=");
-    if (key && value !== undefined) properties[key.trim()] = value.trim();
-  }
-  return { name: state.slice(0, open), properties };
-}
+export { parseState };
 
 export type Vec3 = readonly [number, number, number];
 /** An inclusive box of cells: `[x0, y0, z0, x1, y1, z1]`. */

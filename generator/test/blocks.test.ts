@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { invalidState } from "../src/blocks.js";
+import { invalidState } from "../src/registry.js";
 import { checkDesign } from "../src/check.js";
 import { parseDesign } from "../src/design.js";
 

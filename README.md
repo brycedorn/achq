@@ -82,12 +82,15 @@ A design is a JSON file, `designs/<name>.json`, changed in place as it improves;
 
 ```bash
 npm run preview -- --design snowy-chalet            # 3D preview in the browser, reloads on edits
+npm run web                                         # walk a design in first person in the browser, no Minecraft
 npm run check -- --design snowy-chalet              # every rule AgentCraft depends on
 npm test                                            # the full test suite
 npm run coverage                                    # the test suite with a coverage table
 ```
 
 `check` covers what the mod needs to run agents in the world: every required anchor, a seat at each desk, a monitor facing it, stations agents can walk to from the entrance and the lounge, and a lounge with a place for each agent. It also walks the design as a player, who cannot jump up a full block the way agents do: every room and every place the design names has to be walkable from the spawn and back, and every drop that would hurt beside a floor or a path needs a railing or a wall, and both ends of every path have to be walkable there and back. It also looks for land no landscape has, such as a path or a stream carried on an embankment. Writing a world also stops on anything Minecraft cannot hold (height, chunk size). The rules and AgentCraft's limits are in [docs/SPEC.md](docs/SPEC.md).
+
+`npm run web` is an early first-person walk-through: pick a design, click to lock the mouse, then WASD to move, space to jump, ctrl to sprint and F to fly. It shares the generator's block shapes, so you collide with what the walk checks assume. Blocks it does not know yet are drawn as cubes in a made-up color; `npm --prefix web run fallbacks` lists them per design.
 
 ## The anchor contract
 
@@ -106,6 +109,7 @@ Extra anchors (such as `cam_<name>` camera spots) are fine.
 ## Repo layout
 
 - `generator/`: the TypeScript generator, preview and checks. The root `npm run` scripts call into it.
+- `web/`: the browser walk-through (Vite and three.js). It imports the generator's source directly.
 - `designs/`: design files, one folder per design.
 - `mod/`: a copy of the AgentCraft Fabric mod, kept as the reference for the anchor contract and as a test target.
 - `docs/SPEC.md`: how the generator works, the rules it checks, and AgentCraft's limits.
