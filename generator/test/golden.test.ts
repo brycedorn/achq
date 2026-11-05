@@ -12,11 +12,11 @@ import { renderDesign } from "../src/render.js";
  */
 const GOLDEN: Record<string, string> = {
   "test-office": "6da4cda6e29d2032",
-  "snowy-chalet": "a54d676edfd94ce0",
-  "riviera-yacht": "c6efa9d64dc31a94",
-  "orbital-station": "a68b3a85fe156ee4",
-  "lighthouse": "7ca693e37d7e1bed",
-  "jungle-treehouse": "00d7223f42132dce",
+  "snowy-chalet": "0af27c9af0b877ac",
+  "riviera-yacht": "46805580f70e92b4",
+  "orbital-station": "f3b1f62c54f59be7",
+  "lighthouse": "9f8a78e27054aae1",
+  "jungle-treehouse": "29acf7d106f64033",
 };
 
 describe("designs render exactly as before", () => {

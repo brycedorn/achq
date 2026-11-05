@@ -59,7 +59,9 @@ function report(layout: ReturnType<typeof parseLayout>): never | void {
 
 /** Print design problems and exit 1 when there are any. */
 function requireClean(design: ReturnType<typeof loadDesign>): void {
-  const problems = checkDesign(design);
+  const advice: { where: string; message: string }[] = [];
+  const problems = checkDesign(design, advice);
+  for (const a of advice) console.warn(`note: ${a.where}: ${a.message}`);
   if (problems.length === 0) return;
   for (const p of problems) console.error(`${p.where}: ${p.message}`);
   console.error(`${problems.length} problem${problems.length === 1 ? "" : "s"} in '${design.name}'; nothing written`);

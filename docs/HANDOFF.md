@@ -1,5 +1,12 @@
 # ACHQ handoff, 2026-10-10 (late evening), updated 2026-10-20
 
+## Update, 2026-11-05
+
+- Building techniques: research into how experienced builders make blocks read as architecture, written up as rules in `docs/styles/building-techniques.md`, with two new notes (flat outside walls, rooms only 2 high). Applied to every scene: lighthouse cottage quoins, window sills and lintels, a door surround and hood, ceiling beams, mossy boulders and wildflowers on the island; chalet shutters, sills, eave brackets and weathered base stone; yacht quay tide line, fenders and ladders; station radiator fins; treehouse mossy boulders and fallen logs. Plants no longer grow on built floors. Not verified in game.
+
+- New checks (problems): every block state is one the game knows (`src/blocks.ts`, data from the game's own report via `tools/update-blocks.py`); cameras are not inside a block or up against one. New notes that never fail a design (`src/advice.ts`, printed as `note:`): stamped personal touches, things out of place for the setting. Cameras fixed in the test office, chalet, station and treehouse.
+- Polish (see SPEC "Polish backlog"): chimney smoke, a bubbling hot tub, fireflies, yacht navigation lights, station boom lights. Golden hashes changed on purpose for the chalet, yacht, station and treehouse. Not verified in game.
+
 ## Update, 2026-11-02 (later)
 
 - New design `jungle-treehouse`: three cabins in giant emergent trees above a rainforest canopy, rope bridges, a spiral stair round the west trunk to the forest floor, a switchback trail to a river jetty. See SPEC "Fifth example". Plan: `_plans/jungle-treehouse.md`.

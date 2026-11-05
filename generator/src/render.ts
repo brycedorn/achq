@@ -412,7 +412,7 @@ export function renderDesign(design: Design, { origin }: Placement): Rendered {
         fill([flueA, feet + part.bodyHeight, zLow], [flueB, part.top, zHigh], part.stone);
         fill([flueA, part.top + 1, zLow], [flueB, part.top + 1, zHigh], part.cap);
         fill([front, feet, part.z], [front, feet + 1, part.z], AIR); // the opening
-        fill([front + d, feet + 1, part.z], [front + d, part.top, part.z], AIR); // the flue
+        fill([front + d, feet + 1, part.z], [front + d, part.top + 1, part.z], AIR); // the flue, open through the cap so the smoke gets out
         set(front + d, feet, part.z, "minecraft:campfire[lit=true]");
         break;
       }

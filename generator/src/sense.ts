@@ -111,48 +111,69 @@ export function senseChecks(design: Design, rendered: Rendered, player: PlayerWa
     }
   }
 
-  // Doors lead somewhere: a player who reaches one side of a door can stand on the other.
-  for (let y = 0; y < v.height; y++)
-    for (let z = 0; z < v.length; z++)
-      for (let x = 0; x < v.width; x++) {
-        const s = v.get(x, y, z);
-        if (!s.includes("_door[") || !s.includes("half=lower") || !built(x, y, z)) continue;
-        const f = /facing=(\w+)/.exec(s)?.[1] ?? "north";
-        const [dx, dz] = STEP[f]!;
-        // Judged only where a player gets to one side of it: a door out of the walked area is someone else's.
-        const sides = [1, -1].map((side) => [x + dx * side, z + dz * side] as const);
-        const ok = sides.map(([sx, sz]) => reached(sx, y, sz));
-        if (ok.some(Boolean))
-          sides.forEach(([sx, sz], i) => {
-            if (!ok[i]) out.push({ where: "door", message: `the door at ${x}, ${y}, ${z} opens onto ${sx}, ${y}, ${sz}, where no one can stand or walk to` });
-          });
-      }
-
-  // Nothing floats: what hangs has something above it, what stands has something under it, and no built block is on
-  // its own in the air.
+  // One pass over the volume: what each kind of block needs is worked out once per palette entry, air is skipped at
+  // once, and the cells the checks below look at are collected on the way.
+  type Kind = { name: string; door: boolean; stairs?: string; glass: boolean; support?: "below" | "above" | "crop" };
+  const kinds = new Map<number, Kind>();
+  const kindOf = (id: number): Kind => {
+    let k = kinds.get(id);
+    if (k) return k;
+    const { name: n, properties: p } = parseState(v.stateOf(id));
+    let support: Kind["support"];
+    if (/^minecraft:(soul_)?lantern$/.test(n)) support = p["hanging"] === "true" ? "above" : "below";
+    else if (n === "minecraft:bell") support = p["attachment"] === "ceiling" ? "above" : p["attachment"] === "floor" ? "below" : undefined;
+    else if (/(_carpet|flower_pot|_pressure_plate|_rail|candle)$/.test(n) || n.startsWith("minecraft:potted_") || (/_door$/.test(n) && p["half"] === "lower")) support = "below";
+    else if (/^minecraft:(wheat|carrots|potatoes|beetroots)$/.test(n)) support = "crop";
+    k = {
+      name: n,
+      door: /_door$/.test(n) && p["half"] === "lower",
+      stairs: /_stairs$/.test(n) && p["half"] === "bottom" ? (p["facing"] ?? "north") : undefined,
+      glass: /glass/.test(n),
+      support,
+    };
+    kinds.set(id, k);
+    return k;
+  };
+  const doors: [number, number, number, string][] = [];
+  const stairs: [number, number, number, string][] = [];
+  const panes: [number, number, number][] = [];
   const floating: string[] = [];
+  const idAt = (x: number, y: number, z: number) => (x < 0 || y < 0 || z < 0 || x >= v.width || y >= v.height || z >= v.length ? 0 : v.idAt(x, y, z));
   for (let y = 0; y < v.height; y++)
     for (let z = 0; z < v.length; z++)
       for (let x = 0; x < v.width; x++) {
-        const s = v.get(x, y, z);
-        if (isAir(s) || !(built(x, y, z) || rendered.natural(x, y, z))) continue; // a tree's branches must not float either
-        const { name: n, properties: p } = parseState(s);
-        const below = get(x, y - 1, z);
-        const above = get(x, y + 1, z);
-        let need: "below" | "above" | undefined;
-        if (/^minecraft:(soul_)?lantern$/.test(n)) need = p["hanging"] === "true" ? "above" : "below";
-        else if (n === "minecraft:bell") need = p["attachment"] === "ceiling" ? "above" : p["attachment"] === "floor" ? "below" : undefined;
-        else if (/(_carpet|flower_pot|_pressure_plate|_rail|candle)$/.test(n) || n.startsWith("minecraft:potted_") || (/_door$/.test(n) && p["half"] === "lower")) need = "below";
-        else if (/^minecraft:(wheat|carrots|potatoes|beetroots)$/.test(n)) {
-          if (name(below) !== "minecraft:farmland") out.push({ where: "crop", message: `${n} at ${x}, ${y}, ${z} needs farmland under it` });
+        const id = v.idAt(x, y, z);
+        if (id === 0) continue;
+        const k = kindOf(id);
+        if (k.door && built(x, y, z)) doors.push([x, y, z, /facing=(\w+)/.exec(v.stateOf(id))?.[1] ?? "north"]);
+        if (k.stairs && built(x, y, z)) stairs.push([x, y, z, k.stairs]);
+        if (k.glass && built(x, y, z)) panes.push([x, y, z]);
+        // Nothing floats: what hangs has something above it, what stands has something under it, and no built block
+        // (nor a tree's branch) is on its own in the air.
+        if (k.support) {
+          if (!(built(x, y, z) || rendered.natural(x, y, z))) continue;
+          const below = get(x, y - 1, z);
+          if (k.support === "crop") {
+            if (name(below) !== "minecraft:farmland") out.push({ where: "crop", message: `${k.name} at ${x}, ${y}, ${z} needs farmland under it` });
+          } else if (k.support === "below" && !solid(below)) out.push({ where: "support", message: `${k.name} at ${x}, ${y}, ${z} has nothing under it` });
+          else if (k.support === "above" && !solid(get(x, y + 1, z))) out.push({ where: "support", message: `${k.name} at ${x}, ${y}, ${z} hangs from nothing` });
           continue;
         }
-        if (need === "below" && !solid(below)) out.push({ where: "support", message: `${n} at ${x}, ${y}, ${z} has nothing under it` });
-        if (need === "above" && !solid(above)) out.push({ where: "support", message: `${n} at ${x}, ${y}, ${z} hangs from nothing` });
-        if (need) continue;
-        const touching = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].some(([a, b, c]) => !isAir(get(x + a!, y + b!, z + c!)));
-        if (!touching) floating.push(`${n} at ${x}, ${y}, ${z}`);
+        if (idAt(x + 1, y, z) || idAt(x - 1, y, z) || idAt(x, y + 1, z) || idAt(x, y - 1, z) || idAt(x, y, z + 1) || idAt(x, y, z - 1)) continue;
+        if (built(x, y, z) || rendered.natural(x, y, z)) floating.push(`${k.name} at ${x}, ${y}, ${z}`);
       }
+
+  // Doors lead somewhere: a player who reaches one side of a door can stand on the other.
+  for (const [x, y, z, f] of doors) {
+    const [dx, dz] = STEP[f]!;
+    // Judged only where a player gets to one side of it: a door out of the walked area is someone else's.
+    const sides = [1, -1].map((side) => [x + dx * side, z + dz * side] as const);
+    const ok = sides.map(([sx, sz]) => reached(sx, y, sz));
+    if (ok.some(Boolean))
+      sides.forEach(([sx, sz], i) => {
+        if (!ok[i]) out.push({ where: "door", message: `the door at ${x}, ${y}, ${z} opens onto ${sx}, ${y}, ${sz}, where no one can stand or walk to` });
+      });
+  }
   for (const f of floating.slice(0, 10)) out.push({ where: "floating", message: `${f} floats, touching nothing` });
   if (floating.length > 10) out.push({ where: "floating", message: `and ${floating.length - 10} more blocks float, touching nothing` });
 
@@ -187,23 +208,19 @@ export function senseChecks(design: Design, rendered: Rendered, player: PlayerWa
 
   // Seats face something: a table or desk, a fire, a window, other seats or open space, not a blank wall.
   const turned: [number, number, number][] = [];
-  for (let y = 1; y < v.height - 2; y++)
-    for (let z = 0; z < v.length; z++)
-      for (let x = 0; x < v.width; x++) {
-        const s = v.get(x, y, z);
-        if (!s.includes("_stairs[") || !s.includes("half=bottom") || !built(x, y, z)) continue;
-        const f = /facing=(\w+)/.exec(s)?.[1] ?? "north";
-        const [dx, dz] = STEP[f]!;
-        const same = (t: string) => t.includes("_stairs[") && t.includes("half=bottom") && t.includes(`facing=${f}`);
-        // A seat stands on a floor with room over it, and is not a step: of a flight, or up onto higher ground.
-        if (!opaque(get(x, y - 1, z)) || solid(get(x, y + 1, z))) continue;
-        if (same(get(x + dx, y + 1, z + dz)) || same(get(x - dx, y - 1, z - dz))) continue;
-        if (solid(get(x + dx, y, z + dz)) && !solid(get(x + dx, y + 1, z + dz))) continue;
-        // Its sitter looks away from its back: within two blocks, at the seat and at eye level.
-        const ahead = [1, 2].flatMap((k) => [get(x - dx * k, y, z - dz * k), get(x - dx * k, y + 1, z - dz * k)]);
-        if (ahead.some((t) => solid(t) && !boring(t))) continue;
-        if ([1, 2].some((k) => boring(get(x - dx * k, y + 1, z - dz * k)))) turned.push([x, y, z]);
-      }
+  for (const [x, y, z, f] of stairs) {
+    if (y < 1 || y >= v.height - 2) continue;
+    const [dx, dz] = STEP[f]!;
+    const same = (t: string) => t.includes("_stairs[") && t.includes("half=bottom") && t.includes(`facing=${f}`);
+    // A seat stands on a floor with room over it, and is not a step: of a flight, or up onto higher ground.
+    if (!opaque(get(x, y - 1, z)) || solid(get(x, y + 1, z))) continue;
+    if (same(get(x + dx, y + 1, z + dz)) || same(get(x - dx, y - 1, z - dz))) continue;
+    if (solid(get(x + dx, y, z + dz)) && !solid(get(x + dx, y + 1, z + dz))) continue;
+    // Its sitter looks away from its back: within two blocks, at the seat and at eye level.
+    const ahead = [1, 2].flatMap((k) => [get(x - dx * k, y, z - dz * k), get(x - dx * k, y + 1, z - dz * k)]);
+    if (ahead.some((t) => solid(t) && !boring(t))) continue;
+    if ([1, 2].some((k) => boring(get(x - dx * k, y + 1, z - dz * k)))) turned.push([x, y, z]);
+  }
   for (const [x, y, z] of turned) out.push({ where: "seat", message: `the seat at ${x}, ${y}, ${z} faces a blank wall: turn it to a table, a fire, a window or the view` });
 
   // Windows look out: glass with open air on one side must have a line of sight through it, straight or (in a curved
@@ -211,35 +228,27 @@ export function senseChecks(design: Design, rendered: Rendered, player: PlayerWa
   const blind: [number, number, number][] = [];
   /** Seen past: anything but a full opaque block (a handrail, a desk, a lamp, more glass). */
   const clearView = (t: string) => !opaque(t);
-  for (let y = 0; y < v.height; y++)
-    for (let z = 0; z < v.length; z++)
-      for (let x = 0; x < v.width; x++) {
-        const s = v.get(x, y, z);
-        if (!/glass/.test(s) || !built(x, y, z)) continue;
-        const lines = [[1, 0], [0, 1], [1, 1], [1, -1]].map(([ax, az]) => [get(x + ax!, y, z + az!), get(x - ax!, y, z - az!)] as const);
-        const facesAir = lines.slice(0, 2).some(([a, b]) => !solid(a) || !solid(b));
-        if (facesAir && !lines.some(([a, b]) => clearView(a) && clearView(b))) blind.push([x, y, z]);
-      }
+  for (const [x, y, z] of panes) {
+    const lines = [[1, 0], [0, 1], [1, 1], [1, -1]].map(([ax, az]) => [get(x + ax!, y, z + az!), get(x - ax!, y, z - az!)] as const);
+    const facesAir = lines.slice(0, 2).some(([a, b]) => !solid(a) || !solid(b));
+    if (facesAir && !lines.some(([a, b]) => clearView(a) && clearView(b))) blind.push([x, y, z]);
+  }
   report("window", blind, (at, more) => `the window at ${at}${more} looks straight into a solid block: move what is against it, or the window`);
 
   // Stairs arrive somewhere open: a clear block to stand in at the foot and at the head of every flight.
-  for (let y = 1; y < v.height - 3; y++)
-    for (let z = 0; z < v.length; z++)
-      for (let x = 0; x < v.width; x++) {
-        const s = v.get(x, y, z);
-        if (!s.includes("_stairs[") || !s.includes("half=bottom") || !built(x, y, z)) continue;
-        const f = /facing=(\w+)/.exec(s)?.[1] ?? "north";
-        const [dx, dz] = STEP[f]!;
-        const same = (t: string) => t.includes("_stairs[") && t.includes("half=bottom") && t.includes(`facing=${f}`);
-        const up = same(get(x + dx, y + 1, z + dz));
-        const down = same(get(x - dx, y - 1, z - dz));
-        if (up === down) continue; // the middle of a flight, or a lone stair (a seat, a step)
-        if (!reached(x, y, z)) continue; // a roof's rows of stairs, not a flight anyone walks
-        // The foot: room to stand in front of the first step. The head: room to step off the last one.
-        const [cx, cy, cz] = down ? [x + dx, y + 1, z + dz] : [x - dx, y, z - dz];
-        if (solid(get(cx, cy, cz)) || solid(get(cx, cy + 1, cz)))
-          out.push({ where: "stairs", message: `the stairs at ${x}, ${y}, ${z} ${down ? "arrive at" : "start at"} ${get(cx, cy, cz) !== "minecraft:air" ? get(cx, cy, cz) : get(cx, cy + 1, cz)} (${cx}, ${cy}, ${cz}): leave a clear block there` });
-      }
+  for (const [x, y, z, f] of stairs) {
+    if (y < 1 || y >= v.height - 3) continue;
+    const [dx, dz] = STEP[f]!;
+    const same = (t: string) => t.includes("_stairs[") && t.includes("half=bottom") && t.includes(`facing=${f}`);
+    const up = same(get(x + dx, y + 1, z + dz));
+    const down = same(get(x - dx, y - 1, z - dz));
+    if (up === down) continue; // the middle of a flight, or a lone stair (a seat, a step)
+    if (!reached(x, y, z)) continue; // a roof's rows of stairs, not a flight anyone walks
+    // The foot: room to stand in front of the first step. The head: room to step off the last one.
+    const [cx, cy, cz] = down ? [x + dx, y + 1, z + dz] : [x - dx, y, z - dz];
+    if (solid(get(cx, cy, cz)) || solid(get(cx, cy + 1, cz)))
+      out.push({ where: "stairs", message: `the stairs at ${x}, ${y}, ${z} ${down ? "arrive at" : "start at"} ${get(cx, cy, cz) !== "minecraft:air" ? get(cx, cy, cz) : get(cx, cy + 1, cz)} (${cx}, ${cy}, ${cz}): leave a clear block there` });
+  }
 
   // Buildings sit on the ground: no floor a player stands on with a gap of a block or three under it over open ground.
   const lifted: [number, number, number][] = [];
@@ -283,6 +292,7 @@ function emits(state: string): number {
   if (n === "minecraft:campfire") return p["lit"] === "false" ? 0 : 15;
   if (n === "minecraft:redstone_lamp") return p["lit"] === "true" ? 15 : 0;
   if (n === "minecraft:end_rod" || n === "minecraft:torch" || n === "minecraft:wall_torch") return 14;
+  if (n === "minecraft:light") return Number(p["level"] ?? 15); // the invisible light block
   if (/^minecraft:(smoker|furnace|blast_furnace)$/.test(n)) return p["lit"] === "true" ? 13 : 0;
   if (/^minecraft:soul_(lantern|campfire|torch|wall_torch)$/.test(n)) return 10;
   if (/candle$/.test(n)) return p["lit"] === "true" ? 3 * Number(p["candles"] ?? 1) : 0;
@@ -290,7 +300,7 @@ function emits(state: string): number {
 }
 
 /** Whether a block stops light (and is a solid wall): a full, opaque cube. */
-function opaque(state: string): boolean {
+export function opaque(state: string): boolean {
   if (!solid(state) || /glass|ice$|leaves|agentcraft:|chest|cauldron|composter|lectern|decorated_pot|farmland|bell/.test(state)) return false;
   const s = shapes(state);
   return s.length === 1 && s[0]!.x0 === 0 && s[0]!.x1 === 1 && s[0]!.z0 === 0 && s[0]!.z1 === 1 && s[0]!.lo === 0 && s[0]!.hi === 1;

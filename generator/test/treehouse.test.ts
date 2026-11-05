@@ -159,9 +159,8 @@ describe("a trail under a deck", () => {
 });
 
 describe("jungle treehouse", () => {
-  it("passes every check, walked as a player down the stair and the trail to the river, there and back", () => {
-    const design = loadDesign("jungle-treehouse");
-    expect(design.walk?.to.map((t) => t.name)).toEqual(["stair foot", "landing"]);
-    expect(checkDesign(design)).toEqual([]);
-  }, 60_000);
+  // Every check (and so the walk there and back) is in designs.test.ts.
+  it("is walked as a player down the stair and the trail to the river", () => {
+    expect(loadDesign("jungle-treehouse").walk?.to.map((t) => t.name)).toEqual(["stair foot", "landing"]);
+  });
 });

@@ -1,8 +1,10 @@
 import { CAST_IDS, SHARED_STATIONS, validateLayout } from "./anchors.js";
 import { type Design, YAW } from "./design.js";
+import { type Advice, adviseDesign } from "./advice.js";
+import { invalidState } from "./blocks.js";
 import { renderDesign } from "./render.js";
 import { blockOf, PlayerWalk } from "./player.js";
-import { senseChecks } from "./sense.js";
+import { opaque, senseChecks } from "./sense.js";
 import { collisionTop, Walk } from "./walk.js";
 import { parseState } from "./schematic.js";
 
@@ -68,7 +70,8 @@ function embankments(raised: (x: number, z: number) => number, width: number, le
   return out;
 }
 
-export function checkDesign(design: Design): DesignProblem[] {
+/** Every check; with `advice`, also collects notes on taste that do not fail the design (`advice.ts`). */
+export function checkDesign(design: Design, advice?: Advice[]): DesignProblem[] {
   const problems: DesignProblem[] = [];
   const problem = (where: string, message: string): void => {
     problems.push({ where, message });
@@ -81,10 +84,38 @@ export function checkDesign(design: Design): DesignProblem[] {
     return [{ where: "design", message: e instanceof RangeError ? `a part is outside the ${design.size.join(" x ")} volume: ${e.message}` : String(e) }];
   }
   const { volume, layout, conflicts, built, onPath } = rendered;
+  if (advice) advice.push(...adviseDesign(design, rendered));
 
   for (const p of validateLayout(layout)) problem(p.anchor, p.message);
 
   for (const c of conflicts) problem(c.second, `overwrites a block of part '${c.first}' at ${c.cell.join(", ")}`);
+
+  // Cameras see something: not from inside a block, and not at a wall right in front of them. Their eye and view
+  // are the anchor's position and yaw and pitch (Minecraft's: yaw 0 looks south, positive pitch looks down).
+  for (const [name, a] of Object.entries(layout.anchors)) {
+    if (!name.startsWith("cam_")) continue;
+    const at = (x: number, y: number, z: number) => volume.get(Math.floor(x), Math.floor(y), Math.floor(z));
+    const inside = (x: number, y: number, z: number) => x >= 0 && y >= 0 && z >= 0 && x < volume.width && y < volume.height && z < volume.length;
+    if (inside(a.x, a.y, a.z) && opaque(at(a.x, a.y, a.z))) {
+      problem(name, `the camera is inside ${at(a.x, a.y, a.z)}`);
+      continue;
+    }
+    const [yaw, pitch] = [(a.yaw * Math.PI) / 180, (a.pitch * Math.PI) / 180];
+    const dir = [-Math.sin(yaw) * Math.cos(pitch), -Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)];
+    for (let d = 0.1; d <= 2; d += 0.1) {
+      const [x, y, z] = [a.x + dir[0]! * d, a.y + dir[1]! * d, a.z + dir[2]! * d];
+      if (inside(x, y, z) && opaque(at(x, y, z))) {
+        problem(name, `the camera looks straight into ${at(x, y, z)} ${d.toFixed(1)} blocks away: turn it, or move it back`);
+        break;
+      }
+    }
+  }
+
+  // Every block is one the game knows, as written: Minecraft loads anything else as air, without a word.
+  for (let id = 1; id < volume.paletteSize; id++) {
+    const wrong = invalidState(volume.stateOf(id));
+    if (wrong) problem("blocks", wrong);
+  }
 
   // The land looks like land: no trail or river carried on an embankment.
   for (const bank of embankments(rendered.raised, volume.width, volume.length))
