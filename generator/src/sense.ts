@@ -283,6 +283,7 @@ function emits(state: string): number {
   if (n === "minecraft:campfire") return p["lit"] === "false" ? 0 : 15;
   if (n === "minecraft:redstone_lamp") return p["lit"] === "true" ? 15 : 0;
   if (n === "minecraft:end_rod" || n === "minecraft:torch" || n === "minecraft:wall_torch") return 14;
+  if (n === "minecraft:light") return Number(p["level"] ?? 15); // the invisible light block
   if (/^minecraft:(smoker|furnace|blast_furnace)$/.test(n)) return p["lit"] === "true" ? 13 : 0;
   if (/^minecraft:soul_(lantern|campfire|torch|wall_torch)$/.test(n)) return 10;
   if (/candle$/.test(n)) return p["lit"] === "true" ? 3 * Number(p["candles"] ?? 1) : 0;
@@ -290,7 +291,7 @@ function emits(state: string): number {
 }
 
 /** Whether a block stops light (and is a solid wall): a full, opaque cube. */
-function opaque(state: string): boolean {
+export function opaque(state: string): boolean {
   if (!solid(state) || /glass|ice$|leaves|agentcraft:|chest|cauldron|composter|lectern|decorated_pot|farmland|bell/.test(state)) return false;
   const s = shapes(state);
   return s.length === 1 && s[0]!.x0 === 0 && s[0]!.x1 === 1 && s[0]!.z0 === 0 && s[0]!.z1 === 1 && s[0]!.lo === 0 && s[0]!.hi === 1;
