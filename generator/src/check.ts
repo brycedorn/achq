@@ -9,6 +9,34 @@ import { collisionTop, Walk } from "./walk.js";
 import { parseState } from "./schematic.js";
 
 export type DesignProblem = { where: string; message: string };
+/** An agent's walk from its desk to a station, in blocks as the mod's A* prices it. */
+export type Route = { desk: string; station: string; length: number };
+
+/**
+ * The stations an agent walks to from its desk while working, and the longest and average walk allowed: about half
+ * again AgentCraft's own studio HQ. Measured on its open floor, the studio's walks from a desk to a station average
+ * about 21 blocks (more round its furniture) and the longest is about 40, 14 s at the agents' 2.9 blocks a second.
+ * The lounge, where agents go off shift, may be further (docs/SPEC.md, rule 13).
+ */
+export const ROUTE_STATIONS = ["library", "terminal", "testbench", "mergestation", "meeting", "user"] as const;
+export const ROUTE_MAX = 60;
+export const ROUTE_MEAN = 35;
+export const LOUNGE_MAX = 80;
+
+/** The walks from the desks that are too long, one by one and on average (rule 13). */
+export function judgeRoutes(walked: readonly Route[]): DesignProblem[] {
+  const out: DesignProblem[] = [];
+  for (const r of walked) {
+    const most = r.station === "lounge" ? LOUNGE_MAX : ROUTE_MAX;
+    if (r.length > most)
+      out.push({ where: "route", message: `${r.desk}'s walk from the desk to the ${r.station} is ${r.length.toFixed(0)} blocks (${(r.length / 2.9).toFixed(0)} s): keep every desk within ${most} blocks of the ${r.station === "lounge" ? "lounge" : "stations"}` });
+  }
+  const work = walked.filter((r) => r.station !== "lounge");
+  const mean = work.reduce((s, r) => s + r.length, 0) / (work.length || 1);
+  if (mean > ROUTE_MEAN)
+    out.push({ where: "route", message: `the walks from the desks to the stations average ${mean.toFixed(0)} blocks: bring the stations nearer the desks (at most ${ROUTE_MEAN} on average)` });
+  return out;
+}
 
 const MIN_SLOT_SPACING = 1.6;
 /** By the anchor contract these anchors are chairs (`mod/FEATURES.md`). */
@@ -71,7 +99,7 @@ function embankments(raised: (x: number, z: number) => number, width: number, le
 }
 
 /** Every check; with `advice`, also collects notes on taste that do not fail the design (`advice.ts`). */
-export function checkDesign(design: Design, advice?: Advice[]): DesignProblem[] {
+export function checkDesign(design: Design, advice?: Advice[], routes?: Route[]): DesignProblem[] {
   const problems: DesignProblem[] = [];
   const problem = (where: string, message: string): void => {
     problems.push({ where, message });
@@ -236,6 +264,21 @@ export function checkDesign(design: Design, advice?: Advice[]): DesignProblem[] 
       if (target && !reach.has(target.join(","))) problem(name, `cannot be reached from ${from}`);
     }
   }
+
+  // Agents walk from their desks to the stations all day: every walk short enough that work is not spent walking.
+  const walked: Route[] = [];
+  for (const id of CAST_IDS) {
+    const from = targets.get(`desk_${id}`);
+    if (!from) continue;
+    const far = walk.distances(from);
+    for (const station of [...ROUTE_STATIONS, "lounge"]) {
+      const to = targets.get(station);
+      const length = to && far.get(to.join(","));
+      if (length !== undefined) walked.push({ desk: id, station, length });
+    }
+  }
+  routes?.push(...walked);
+  for (const p of judgeRoutes(walked)) problem(p.where, p.message);
 
   // A player must be able to walk it too: from the spawn to every spot and every place the design names, and back,
   // without jumping.

@@ -151,6 +151,13 @@ const deckPart = z.object({
   /** Each fence's connections are set, so the railing is closed rather than a row of separate posts a player walks between. */
   rail: z.object({ block, sides: z.array(direction) }),
   posts: z.object({ block, every: z.number().int().positive(), bottom: int }),
+  /**
+   * Round the platform off: a superellipse filling its bounds, `round` its exponent (2 a circle or an ellipse, 3 to 4
+   * a rounded square). The railing then runs all the way round its edge, whatever `rail.sides` says.
+   */
+  round: z.number().min(2).optional(),
+  /** A beam under the platform's outer edge, following it round. */
+  rim: block.optional(),
 });
 
 /**
@@ -400,7 +407,8 @@ const spiralPart = z.object({
   steps: block,
   landing: block,
   rail: block,
-  core: block,
+  /** The column inside the stair; left out (round a tree trunk, say), the stair gets a railing along its inner edge. */
+  core: block.optional(),
   stringer: block,
   /** A lantern on the outer corner post of every landing. */
   lamp: block.optional(),

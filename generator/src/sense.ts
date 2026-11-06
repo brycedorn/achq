@@ -296,6 +296,11 @@ function emits(state: string): number {
   if (/^minecraft:(smoker|furnace|blast_furnace)$/.test(n)) return p["lit"] === "true" ? 13 : 0;
   if (/^minecraft:soul_(lantern|campfire|torch|wall_torch)$/.test(n)) return 10;
   if (/candle$/.test(n)) return p["lit"] === "true" ? 3 * Number(p["candles"] ?? 1) : 0;
+  // Things that glow by nature: glow berries, glow lichen, fireflies, a brown mushroom.
+  if (/^minecraft:cave_vines(_plant)?$/.test(n)) return p["berries"] === "true" ? 14 : 0;
+  if (n === "minecraft:glow_lichen") return 7;
+  if (n === "minecraft:firefly_bush") return 2;
+  if (n === "minecraft:brown_mushroom") return 1;
   return 0;
 }
 

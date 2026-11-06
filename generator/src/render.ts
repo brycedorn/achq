@@ -338,22 +338,33 @@ export function renderDesign(design: Design, { origin }: Placement): Rendered {
       case "deck": {
         const [x0, x1] = part.x;
         const [z0, z1] = part.z;
-        fill([x0, part.y, z0], [x1, part.y, z1], part.planks);
         const sides = new Set(part.rail.sides);
-        const onRail = (x: number, z: number) =>
+        // Round: a superellipse filling the bounds (a half block beyond the middle of the end cells), railed all round.
+        const [cx, cz, rx, rz] = [(x0 + x1) / 2, (z0 + z1) / 2, (x1 - x0) / 2 + 0.5, (z1 - z0) / 2 + 0.5];
+        const on = (x: number, z: number) =>
           x >= x0 && x <= x1 && z >= z0 && z <= z1 &&
-          ((sides.has("north") && z === z0) || (sides.has("south") && z === z1) || (sides.has("west") && x === x0) || (sides.has("east") && x === x1));
+          (part.round === undefined || Math.abs((x - cx) / rx) ** part.round + Math.abs((z - cz) / rz) ** part.round <= 1);
+        const onRail = (x: number, z: number) =>
+          on(x, z) &&
+          (part.round !== undefined
+            ? // Every cell beside the outside, corners too, so the railing is joined face to face all the way round.
+              [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]].some(([dx, dz]) => !on(x + dx!, z + dz!))
+            : (sides.has("north") && z === z0) || (sides.has("south") && z === z1) || (sides.has("west") && x === x0) || (sides.has("east") && x === x1));
         /** A fence joined to its neighbours along the railing. */
         const railState = (x: number, z: number) =>
           `${part.rail.block}[east=${onRail(x + 1, z)},north=${onRail(x, z - 1)},south=${onRail(x, z + 1)},waterlogged=false,west=${onRail(x - 1, z)}]`;
+        const edge = (x: number, z: number) => !on(x + 1, z) || !on(x - 1, z) || !on(x, z + 1) || !on(x, z - 1) || onRail(x, z);
         for (let x = x0; x <= x1; x++)
           for (let z = z0; z <= z1; z++) {
-            const onEdge =
-              (sides.has("north") && z === z0) || (sides.has("south") && z === z1) || (sides.has("west") && x === x0) || (sides.has("east") && x === x1);
-            if (onEdge) set(x, part.y + 1, z, railState(x, z));
-            const post = (x === x0 || x === x1 || (x - x0) % part.posts.every === 0) && (z === z0 || z === z1 || (z - z0) % part.posts.every === 0);
-            const perimeter = x === x0 || x === x1 || z === z0 || z === z1;
-            if (post && perimeter) fill([x, part.posts.bottom, z], [x, part.y - 1, z], part.posts.block);
+            if (!on(x, z)) continue;
+            set(x, part.y, z, part.planks);
+            if (onRail(x, z)) set(x, part.y + 1, z, railState(x, z));
+            if (part.rim && edge(x, z)) set(x, part.y - 1, z, part.rim);
+            const post =
+              part.round !== undefined
+                ? onRail(x, z) && (x === Math.round(cx) || z === Math.round(cz))
+                : (x === x0 || x === x1 || (x - x0) % part.posts.every === 0) && (z === z0 || z === z1 || (z - z0) % part.posts.every === 0) && (x === x0 || x === x1 || z === z0 || z === z1);
+            if (post) fill([x, part.posts.bottom, z], [x, part.y - 1, z], part.posts.block);
           }
         break;
       }

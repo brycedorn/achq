@@ -46,7 +46,7 @@ export function rainforestTree(ctx: Ctx, part: Of<"trees">, g: Ground, tx: numbe
     if (h === undefined) return;
     for (let t = Math.min(y, base); t > h; t--) put(x, t, z);
   };
-  /** A rough, flattened ball of leaves. */
+  /** A flattened ball of leaves, full inside and a little ragged only at its very edge (holes deeper in read as gaps). */
   const blob = (cx: number, cy: number, cz: number, rx: number, ry: number, salt: number) => {
     const R = Math.ceil(rx);
     for (let dy = -Math.ceil(ry); dy <= Math.ceil(ry); dy++)
@@ -54,7 +54,7 @@ export function rainforestTree(ctx: Ctx, part: Of<"trees">, g: Ground, tx: numbe
         for (let dz = -R; dz <= R; dz++) {
           const n = (dx * dx + dz * dz) / (rx * rx) + (dy * dy) / (ry * ry);
           if (n > 1) continue;
-          if (n > 0.55 && hash2(cx + dx * 7 + dy * 3, cz + dz * 5 - dy, seed + salt) < 0.3) continue;
+          if (n > 0.75 && hash2(cx + dx * 7 + dy * 3, cz + dz * 5 - dy, seed + salt) < 0.2) continue;
           leaf(cx + dx, cy + dy, cz + dz);
         }
   };
@@ -98,13 +98,15 @@ export function rainforestTree(ctx: Ctx, part: Of<"trees">, g: Ground, tx: numbe
     // A giant: a trunk tapering from `girth`, buttress fins round its foot, limbs fanning out under a broad crown.
     const girth = part.girth ?? Math.max(2, size / 14);
     const crownAt = base + Math.round(size * 0.78);
-    for (let y = base + 1; y <= crownAt + 2; y++) {
-      const rad = girth * (1 - 0.3 * ((y - base) / size));
-      const R = Math.ceil(rad);
-      for (let dx = -R; dx <= R; dx++) for (let dz = -R; dz <= R; dz++) if (dx * dx + dz * dz <= rad * rad + rad) trunk(tx + dx, y, tz + dz);
-    }
-    const R0 = Math.ceil(girth);
-    for (let dx = -R0; dx <= R0; dx++) for (let dz = -R0; dz <= R0; dz++) if (dx * dx + dz * dz <= girth * girth + girth) footing(tx + dx, base, tz + dz, trunk);
+    // A round cross-section: the radius snapped to a whole block, with the slack that draws the roundest circle at
+    // that size (3 gives rows of 3, 5, 7, 7, 7, 5, 3) rather than a square with its corners clipped.
+    const disc = (rad: number, at: (dx: number, dz: number) => void) => {
+      const n = Math.max(1, Math.round(rad - 0.2));
+      const reach = n + (n <= 2 ? 0.3 : 0.2);
+      for (let dx = -n; dx <= n; dx++) for (let dz = -n; dz <= n; dz++) if (Math.hypot(dx, dz) <= reach) at(dx, dz);
+    };
+    for (let y = base + 1; y <= crownAt + 2; y++) disc(girth * (1 - 0.3 * ((y - base) / size)), (dx, dz) => trunk(tx + dx, y, tz + dz));
+    disc(girth, (dx, dz) => footing(tx + dx, base, tz + dz, trunk));
     // Buttresses: thin fins that start high on the trunk and run down and out to the ground.
     const fins = 4 + Math.floor(r(5) * 2);
     for (let k = 0; k < fins; k++) {

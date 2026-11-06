@@ -53,6 +53,32 @@ describe("bridge", () => {
   });
 });
 
+describe("round deck", () => {
+  const deck: PartInput = {
+    type: "deck", id: "deck", x: [2, 18], z: [2, 18], y: 8, planks: "minecraft:oak_planks", round: 2.5, rim: "minecraft:stripped_oak_wood",
+    rail: { block: "minecraft:oak_fence", sides: [] }, posts: { block: "minecraft:oak_log", every: 99, bottom: 7 },
+  };
+  const v = render([21, 12, 21], [deck]);
+  const fence = (x: number, z: number) => v.get(x, 9, z).startsWith("minecraft:oak_fence");
+
+  it("rounds off its corners and rails its whole edge, whatever its sides say", () => {
+    expect(v.get(2, 8, 2)).toBe("minecraft:air");
+    expect(v.get(10, 8, 10)).toBe("minecraft:oak_planks");
+    for (const [x, z] of [[2, 10], [18, 10], [10, 2], [10, 18], [4, 4], [16, 16]] as const) expect([x, z, fence(x, z)]).toEqual([x, z, true]);
+    expect(fence(10, 10)).toBe(false);
+  });
+
+  it("joins every fence of the railing face to face to two others, with a rim under it", () => {
+    for (let x = 0; x < 21; x++)
+      for (let z = 0; z < 21; z++) {
+        if (!fence(x, z)) continue;
+        const joined = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dz]) => fence(x + dx!, z + dz!));
+        expect([x, z, joined.length >= 2]).toEqual([x, z, true]);
+        expect(v.get(x, 7, z)).toMatch(/stripped_oak_wood|oak_log/);
+      }
+  });
+});
+
 describe("spiral stair", () => {
   // A floor at layer 20 over the whole area, with the stair cut down through it to the ground.
   const parts: PartInput[] = [
@@ -78,6 +104,16 @@ describe("spiral stair", () => {
     expect(v.get(12, 21, 6)).toMatch(/oak_fence/); // beside the third step, 3.5 down
     expect(v.get(10, 21, 5)).toBe("minecraft:air"); // beside the second, 2.5 down
   });
+
+  it("without a core, rails the inner edge instead, every post joined to the next one up", () => {
+    const { core: _, ...open } = parts[2] as Extract<PartInput, { type: "spiral" }>;
+    const w = render([21, 26, 21], [parts[0]!, parts[1]!, open]);
+    expect(w.get(9, 10, 9)).toBe("minecraft:air"); // where the core stood
+    // Along the north side, inside the steps: a fence at each step's layer and the one above it.
+    for (let j = 2; j < 5; j++) for (const y of [20 - j, 21 - j]) expect([j, y, w.get(8 + j, y, 8)]).toEqual([j, y, expect.stringMatching(/oak_fence/)]);
+    const problems = checkDesign(flat([21, 26, 21], [parts[0]!, parts[1]!, open], [{ name: "foot", at: [6, 3, 6] }])).map((p) => p.message);
+    expect(problems.filter((m) => /a player|unguarded|floats/.test(m))).toEqual([]);
+  });
 });
 
 describe("rainforest trees", () => {
@@ -100,6 +136,12 @@ describe("rainforest trees", () => {
     const trunk = (x: number, z: number) => (x - 20) ** 2 + (z - 20) ** 2 <= 2.5 * 2.5 + 2.5;
     const inClear = all((s) => s !== "minecraft:air").filter(([x, y, z]) => y >= 16 && y <= 22 && x >= 10 && x <= 30 && z >= 10 && z <= 30 && !trunk(x, z));
     expect(inClear).toEqual([]);
+  });
+
+  it("grows a round trunk, not a square one with its corners clipped", () => {
+    // Girth 2.5 at layer 15 snaps to a radius of 2: rows of 3, 5, 5, 5, 3.
+    const row = (dz: number) => [...Array(9).keys()].filter((i) => v.get(16 + i, 15, 20 + dz) === "minecraft:jungle_log").length;
+    expect([-2, -1, 0, 1, 2].map(row)).toEqual([3, 5, 5, 5, 3]);
   });
 
   it("joins every log face to face to another log or the ground, and hangs every vine from a leaf or a vine", () => {

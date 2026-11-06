@@ -85,4 +85,60 @@ export class Walk {
     }
     return seen;
   }
+
+  /**
+   * The length of the shortest walk from `start` to every reachable cell, priced as the mod's A* prices it
+   * (`GridPathfinder`): 1 a straight step, 1.414 a diagonal, 0.6 more for a step up or down.
+   */
+  distances(start: readonly [number, number, number]): Map<string, number> {
+    const key = (x: number, y: number, z: number) => `${x},${y},${z}`;
+    const best = new Map<string, number>([[key(...start), 0]]);
+    // A binary heap of [cost, x, y, z].
+    const heap: [number, number, number, number][] = [[0, ...start]];
+    const push = (e: [number, number, number, number]) => {
+      heap.push(e);
+      for (let i = heap.length - 1; i > 0; ) {
+        const p = (i - 1) >> 1;
+        if (heap[p]![0] <= heap[i]![0]) break;
+        [heap[p], heap[i]] = [heap[i]!, heap[p]!];
+        i = p;
+      }
+    };
+    const pop = () => {
+      const top = heap[0]!;
+      const last = heap.pop()!;
+      if (heap.length > 0) {
+        heap[0] = last;
+        for (let i = 0; ; ) {
+          const [l, r] = [2 * i + 1, 2 * i + 2];
+          let m = i;
+          if (l < heap.length && heap[l]![0] < heap[m]![0]) m = l;
+          if (r < heap.length && heap[r]![0] < heap[m]![0]) m = r;
+          if (m === i) break;
+          [heap[m], heap[i]] = [heap[i]!, heap[m]!];
+          i = m;
+        }
+      }
+      return top;
+    };
+    while (heap.length > 0) {
+      const [g, x, y, z] = pop();
+      if (g > best.get(key(x, y, z))!) continue;
+      for (const [dx, dz] of DIRS) {
+        const diagonal = dx !== 0 && dz !== 0;
+        for (const dy of diagonal ? [0] : [0, 1, -1]) {
+          const [nx, ny, nz] = [x + dx, y + dy, z + dz];
+          if (this.floor(nx, ny, nz) === undefined) continue;
+          if (dy === 1 && this.top(x, y + 2, z) !== undefined) continue;
+          if (diagonal && (this.floor(x + dx, y, z) === undefined || this.floor(x, y, z + dz) === undefined)) continue;
+          const cost = g + (diagonal ? Math.SQRT2 : 1) + (dy !== 0 ? 0.6 : 0);
+          const k = key(nx, ny, nz);
+          if (cost >= (best.get(k) ?? Infinity)) continue;
+          best.set(k, cost);
+          push([cost, nx, ny, nz]);
+        }
+      }
+    }
+    return best;
+  }
 }

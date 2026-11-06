@@ -49,12 +49,13 @@ export function bridge(ctx: Ctx, part: Of<"bridge">): void {
   /** The layer of the block a player stands on. */
   const surface = (i: number) => h[i]! + (stair[i] ? 1 : 0);
 
-  // Room over the deck, and over the cell past each end (which opens the railing of what the bridge meets).
+  // Room over the deck, and over the cell past each end (which opens the railing of what the bridge meets), from the
+  // deck up: a bridge that starts by climbing still opens the railing at the level it leaves from.
   for (let i = -1; i <= n; i++) {
     const j = Math.min(Math.max(i, 0), n - 1);
     for (let k = 0; k < part.width; k++) {
       const [x, z] = cell(i, k);
-      for (let y = surface(j) + 1; y <= surface(j) + 3; y++) if (x >= 0 && z >= 0 && x < v.width && z < v.length && y < v.height) set(x, y, z, AIR);
+      for (let y = h[j]! + 1; y <= surface(j) + 3; y++) if (x >= 0 && z >= 0 && x < v.width && z < v.length && y < v.height) set(x, y, z, AIR);
     }
   }
   const rails: Cell[] = [];
@@ -188,13 +189,30 @@ export function spiral(ctx: Ctx, part: Of<"spiral">): void {
       rails.push([nx, t + 1, nz]);
     }
   }
-  // The column inside: a ring of `core` just inside the stair, wherever nothing stands yet.
-  for (let y = part.bottom; y <= part.top; y++)
-    for (let dx = -(I - 1); dx <= I - 1; dx++)
-      for (let dz = -(I - 1); dz <= I - 1; dz++) {
-        if (Math.max(Math.abs(dx), Math.abs(dz)) !== I - 1) continue;
-        const [x, z] = [cx + dx, cz + dz];
-        if (inside(x, y, z) && v.get(x, y, z) === AIR && !ctx.claimed(x, y, z)) put(x, y, z, part.core);
+  const ring = (x: number, z: number) => Math.max(Math.abs(x - cx), Math.abs(z - cz));
+  if (part.core) {
+    // The column inside: a ring of `core` just inside the stair, wherever nothing stands yet.
+    for (let y = part.bottom; y <= part.top; y++)
+      for (let dx = -(I - 1); dx <= I - 1; dx++)
+        for (let dz = -(I - 1); dz <= I - 1; dz++) {
+          if (Math.max(Math.abs(dx), Math.abs(dz)) !== I - 1) continue;
+          const [x, z] = [cx + dx, cz + dz];
+          if (inside(x, y, z) && v.get(x, y, z) === AIR && !ctx.claimed(x, y, z)) put(x, y, z, part.core);
+        }
+  } else {
+    // No column (it wraps a tree, say): a railing along the inner edge of every step and landing instead.
+    const walked = [...own].map((k) => k.split(",").map(Number) as Cell).filter(([x, y, z]) => ring(x, z) === I && (v.get(x, y, z).startsWith(part.steps) || v.get(x, y, z) === part.landing) && v.get(x, y + 1, z) === AIR);
+    for (const [x, y, z] of walked)
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const [nx, nz] = [x + dx, z + dz];
+        if (ring(nx, nz) !== I - 1 || !inside(nx, y + 1, nz)) continue;
+        // Down to the step's own layer too, so each post meets the next one up the stair face to face.
+        for (const t of [y, y + 1]) {
+          if (v.get(nx, t, nz) !== AIR || ctx.claimed(nx, t, nz)) continue;
+          put(nx, t, nz, part.rail);
+          rails.push([nx, t, nz]);
+        }
       }
+  }
   linkFences(ctx, rails, part.rail);
 }
