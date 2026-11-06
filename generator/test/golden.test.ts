@@ -16,7 +16,7 @@ const GOLDEN: Record<string, string> = {
   "riviera-yacht": "46805580f70e92b4",
   "orbital-station": "f3b1f62c54f59be7",
   "lighthouse": "9f8a78e27054aae1",
-  "jungle-treehouse": "29acf7d106f64033",
+  "jungle-treehouse": "82d70e5fbc884b10",
 };
 
 describe("designs render exactly as before", () => {

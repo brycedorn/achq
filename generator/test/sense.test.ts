@@ -71,6 +71,12 @@ describe("what makes sense to a person", () => {
     expect(home([lamp]).filter((m) => m.startsWith("dark:"))).toEqual([]);
   });
 
+  it("counts glow berries as light, but not bare cave vines", () => {
+    const vine = (berries: boolean): PartInput => ({ type: "box", id: "vine", from: [12, 5, 7], to: [12, 5, 7], block: `minecraft:cave_vines[age=0,berries=${berries}]` });
+    expect(home([vine(true)]).filter((m) => m.startsWith("dark:"))).toEqual([]);
+    expect(home([vine(false)]).some((m) => m.startsWith("dark:"))).toBe(true);
+  });
+
   it("finds a seat that faces a blank wall, but not one that faces the room", () => {
     const chair = (facing: string): PartInput => ({ type: "box", id: "chair", from: [13, 3, 7], to: [13, 3, 7], block: `minecraft:oak_stairs[facing=${facing},half=bottom]` });
     expect(home([lamp, chair("west")])).toContain("seat: the seat at 13, 3, 7 faces a blank wall: turn it to a table, a fire, a window or the view");

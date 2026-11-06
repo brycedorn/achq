@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseLayout, validateLayout } from "./anchors.js";
-import { checkDesign } from "./check.js";
+import { checkDesign, type Route } from "./check.js";
 import { loadDesign } from "./designs.js";
 import { writeOutputs } from "./output.js";
 import { play, playSave, restoreHq } from "./play.js";
@@ -60,8 +60,16 @@ function report(layout: ReturnType<typeof parseLayout>): never | void {
 /** Print design problems and exit 1 when there are any. */
 function requireClean(design: ReturnType<typeof loadDesign>): void {
   const advice: { where: string; message: string }[] = [];
-  const problems = checkDesign(design, advice);
+  const routes: Route[] = [];
+  const problems = checkDesign(design, advice, routes);
   for (const a of advice) console.warn(`note: ${a.where}: ${a.message}`);
+  const work = routes.filter((r) => r.station !== "lounge");
+  if (work.length > 0) {
+    const mean = work.reduce((s, r) => s + r.length, 0) / work.length;
+    const longest = work.reduce((a, b) => (b.length > a.length ? b : a));
+    const lounge = Math.max(...routes.filter((r) => r.station === "lounge").map((r) => r.length), 0);
+    console.warn(`routes: desk to station ${mean.toFixed(0)} blocks on average, longest ${longest.length.toFixed(0)} (${longest.desk} to the ${longest.station}); to the lounge at most ${lounge.toFixed(0)}`);
+  }
   if (problems.length === 0) return;
   for (const p of problems) console.error(`${p.where}: ${p.message}`);
   console.error(`${problems.length} problem${problems.length === 1 ? "" : "s"} in '${design.name}'; nothing written`);
